@@ -31,14 +31,14 @@ describe("updateTarget", () => {
     test("#then an npm install pins omo-ai@<version>", () => {
       expect(updateTarget("/tmp/prefix/lib/node_modules/omo-ai", "linux", "5.1.1", "/home/u", noLockfile, "5.1.2")).toEqual({
         manager: "npm",
-        command: "npm i -g omo-ai@5.1.2",
-        argv: ["npm", "i", "-g", "omo-ai@5.1.2"],
+        command: "npm i -g --prefix '/tmp/prefix' omo-ai@5.1.2",
+        argv: ["npm", "i", "-g", "--prefix", "/tmp/prefix", "omo-ai@5.1.2"],
       })
     })
 
     test("#then a beta install pins the exact beta version instead of the beta tag", () => {
       const target = updateTarget("/tmp/prefix/lib/node_modules/omo-ai", "linux", "5.0.0-0.beta.90", "/home/u", noLockfile, "5.0.0-0.beta.91")
-      expect(target.argv).toEqual(["npm", "i", "-g", "omo-ai@5.0.0-0.beta.91"])
+      expect(target.argv).toEqual(["npm", "i", "-g", "--prefix", "/tmp/prefix", "omo-ai@5.0.0-0.beta.91"])
     })
   })
 })
@@ -114,7 +114,7 @@ describe("omo update against the channel dist-tag", () => {
     const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.1", "5.1.2"], resolveUpdate: resolveNpmUpdate })
     const code = await runSelfUpdate(["update"], h.options)
     expect(code).toBe(0)
-    expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["npm", "i", "-g", "omo-ai@5.1.2"]])
+    expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["npm", "i", "-g", "--prefix", "/tmp/prefix", "omo-ai@5.1.2"]])
   })
 
   test("#given the installed version already equals the dist-tag #then it says so and runs no install", async () => {
@@ -126,6 +126,29 @@ describe("omo update against the channel dist-tag", () => {
     expect(h.errors).toEqual([])
   })
 
+  test("#given a current product with a missing engine #then it reinstalls instead of reporting success", async () => {
+    const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.2"] })
+    let reads = 0
+    const code = await runSelfUpdate(["update"], {
+      ...h.options,
+      readInstalled: () => ({ omo: "5.1.2", engine: reads++ === 0 ? "unknown" : "2026.10.3" }),
+    })
+    expect(code).toBe(0)
+    expect(h.spawned).toHaveLength(1)
+    expect(h.spawned[0]?.args).toEqual(["add", "-g", "omo-ai@5.1.2"])
+  })
+
+  test("#given a successful package manager that leaves the engine missing #then update fails", async () => {
+    const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.1", "5.1.2"] })
+    const code = await runSelfUpdate(["update"], {
+      ...h.options,
+      readInstalled: () => ({ omo: "5.1.2", engine: "unknown" }),
+    })
+    expect(code).toBe(1)
+    expect(h.spawned).toHaveLength(1)
+    expect(h.errors).toHaveLength(1)
+  })
+
   test("#given a beta install #then it follows the beta dist-tag", async () => {
     const h = harness({
       distTags: { latest: "5.1.2", beta: "5.0.0-0.beta.99" },
@@ -134,7 +157,7 @@ describe("omo update against the channel dist-tag", () => {
     })
     const code = await runSelfUpdate(["update"], h.options)
     expect(code).toBe(0)
-    expect(h.spawned.map((call) => call.args)).toEqual([["i", "-g", "omo-ai@5.0.0-0.beta.99"]])
+    expect(h.spawned.map((call) => call.args)).toEqual([["i", "-g", "--prefix", "/tmp/prefix", "omo-ai@5.0.0-0.beta.99"]])
   })
 
   test("#given the registry cannot be reached #then it says the target is unconfirmed and runs the unpinned spec", async () => {

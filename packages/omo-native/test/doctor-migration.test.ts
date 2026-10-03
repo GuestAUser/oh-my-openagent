@@ -204,8 +204,8 @@ describe("omo doctor migration checks", () => {
       const home = String.raw`C:\Users\omo user`
       expect(updateTarget(`${home}\\node_modules\\omo-ai`, "win32", "5.0.0", home, () => false)).toEqual({
         manager: "npm",
-        command: "npm i -g omo-ai",
-        argv: ["npm", "i", "-g", "omo-ai"],
+        command: 'npm i -g --prefix "C:/Users/omo user" omo-ai',
+        argv: ["npm", "i", "-g", "--prefix", "C:/Users/omo user", "omo-ai"],
       })
     })
   })

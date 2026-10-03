@@ -86,6 +86,26 @@ export function updateTarget(
       ...(bunInstall === undefined ? {} : { env: { BUN_INSTALL: bunInstall } }),
     }
   }
+  const globalSuffix = "/lib/node_modules/omo-ai"
+  const localSuffix = "/node_modules/omo-ai"
+  let prefix
+  let global = true
+  if (platform !== "win32" && normalizedRoot.endsWith(globalSuffix)) {
+    prefix = normalizedRoot.slice(0, -globalSuffix.length) || "/"
+  } else if (normalizedRoot.endsWith(localSuffix)) {
+    prefix = normalizedRoot.slice(0, -localSuffix.length) || "/"
+    if (/^[A-Za-z]:$/.test(prefix)) prefix += "/"
+    // Windows global packages share the local layout; a project manifest owns a local install.
+    global = platform === "win32" && !exists(join(prefix, "package.json"))
+  }
+  if (prefix !== undefined) {
+    const quotedPrefix = platform === "win32" ? JSON.stringify(prefix) : `'${prefix.replaceAll("'", "'\\''")}'`
+    return {
+      manager: "npm",
+      command: `npm i ${global ? "-g " : ""}--prefix ${quotedPrefix} ${spec}`,
+      argv: ["npm", "i", ...(global ? ["-g"] : []), "--prefix", prefix, spec],
+    }
+  }
   return {
     manager: "npm",
     command: `npm i -g ${spec}`,

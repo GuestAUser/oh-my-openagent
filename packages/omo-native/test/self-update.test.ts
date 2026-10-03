@@ -53,12 +53,29 @@ describe("updateTarget", () => {
   })
 
   describe("#given an npm or unknown layout", () => {
-    test("#then the command stays npm i -g with npm argv and no BUN_INSTALL overlay", () => {
+    test("#then a global install updates its own prefix instead of the ambient npm prefix", () => {
       expect(updateTarget("/tmp/prefix/lib/node_modules/omo-ai")).toEqual({
         manager: "npm",
-        command: `npm i -g ${SPEC}`,
-        argv: ["npm", "i", "-g", SPEC],
+        command: `npm i -g --prefix '/tmp/prefix' ${SPEC}`,
+        argv: ["npm", "i", "-g", "--prefix", "/tmp/prefix", SPEC],
       })
+    })
+
+    test("#then a local install updates its project rather than a global installation", () => {
+      const target = updateTarget("/tmp/omo project/node_modules/omo-ai", "linux", "5.1.13")
+      expect(target.argv).toEqual(["npm", "i", "--prefix", "/tmp/omo project", "omo-ai"])
+    })
+
+    test("#then Windows preserves the custom global prefix and recognizes a project manifest", () => {
+      const root = String.raw`C:\omo project\node_modules\omo-ai`
+      expect(updateTarget(root, "win32", "5.1.13", "C:/home", () => false).argv)
+        .toEqual(["npm", "i", "-g", "--prefix", "C:/omo project", "omo-ai"])
+      expect(updateTarget(root, "win32", "5.1.13", "C:/home", (path) => path.replaceAll("\\", "/") === "C:/omo project/package.json").argv)
+        .toEqual(["npm", "i", "--prefix", "C:/omo project", "omo-ai"])
+    })
+
+    test("#then an unknown source layout retains the npm global fallback", () => {
+      expect(updateTarget("/tmp/checkout/packages/omo-native").argv).toEqual(["npm", "i", "-g", SPEC])
     })
   })
 })

@@ -79,7 +79,7 @@ export async function runSelfUpdate(args, options = {}) {
     log(formatUpdateCommand(update))
     return 0
   }
-  if (target !== undefined && target === before.omo) {
+  if (target !== undefined && target === before.omo && before.engine !== "unknown") {
     log(`omo ${before.omo} is up to date (omo-ai@${channel} is ${target})`)
     return 0
   }
@@ -107,6 +107,10 @@ export async function runSelfUpdate(args, options = {}) {
   if (target !== undefined && after.omo !== target) {
     error(`omo is still ${after.omo}; ${target} is published`)
     error(`omo: update failed; retry with: ${update.command}`)
+    return 1
+  }
+  if (after.engine === "unknown") {
+    error(`omo: Senpi engine is incomplete after update; retry with: ${update.command}`)
     return 1
   }
   log(formatVersionChange(before, after))

@@ -135,8 +135,8 @@ describe("omo doctor edition summary", () => {
       expect(result.status).toBe(0)
       const summary = editionLine(result.stdout)
       expect(summary).toMatch(/^INFO omo · Edition: Native · Installed: 5\.0\.0-0\.beta\.51 \(engine: senpi 2026\.8\.9\) · Latest: /)
-      expect(lineAfter(result.stdout, summary)).toBe("INFO Update: npm i -g omo-ai@beta")
-      expect(updateTarget(fixture.packageRoot).command).toBe("npm i -g omo-ai@beta")
+      expect(lineAfter(result.stdout, summary)).toBe(`INFO Update: ${updateTarget(fixture.packageRoot).command}`)
+      expect(updateTarget(fixture.packageRoot).argv).toContain("--prefix")
     })
 
     test("#then a Bun-managed install prints the bun update command for that layout", () => {
