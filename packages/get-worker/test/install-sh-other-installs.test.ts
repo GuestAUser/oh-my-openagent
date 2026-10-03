@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { dirname, join, relative } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -51,6 +52,93 @@ function report(f: Fixture, body: string, input?: string) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe("install.sh candidate validation", () => {
+  for (const exitCode of [23, 0]) {
+    test(`a checksum-valid candidate exiting ${exitCode} preserves or replaces the installation safely`, () => {
+      const f = fixture()
+      const installDir = join(f.root, "install bin")
+      const launcher = join(installDir, "omo")
+      const receipt = join(f.home, ".omo", "install.json")
+      const downloads = join(f.root, "downloads")
+      const probe = join(f.root, "candidate-probe")
+      const oldLauncher = "#!/bin/sh\necho 'omo 4.0.0'\n"
+      const oldReceipt = JSON.stringify({
+        method: "standalone",
+        version: "4.0.0",
+        binPath: launcher,
+      }) + "\n"
+      const candidate = [
+        "#!/bin/sh",
+        '[ "$1" = --version ] || exit 99',
+        'printf "%s\\n" "$0" >>"$FIXTURE_PROBE"',
+        "echo 'omo 5.0.0'",
+        `exit ${exitCode}`,
+        "",
+      ].join("\n")
+
+      file(launcher, oldLauncher, true)
+      chmodSync(launcher, 0o751)
+      file(receipt, oldReceipt)
+      chmodSync(receipt, 0o640)
+      file(join(downloads, "omo-linux-x64"), candidate)
+      const checksum = createHash("sha256").update(candidate).digest("hex")
+      file(join(downloads, "SHA256SUMS"), `${checksum}  omo-linux-x64\n`)
+
+      const result = spawnSync("/bin/bash", ["-c", [
+        `source ${JSON.stringify(installer)}`,
+        "detect_asset() { printf '%s\\n' omo-linux-x64; }",
+        'download() { cp "$FIXTURE_DOWNLOADS/$2" "$3"; }',
+        "main 5.0.0",
+      ].join("\n")], {
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          HOME: f.home,
+          PATH: "/usr/bin:/bin",
+          TMPDIR: f.work,
+          OMO_INSTALL_DIR: installDir,
+          OMO_INSTALL_ALLOW_SUDO: "1",
+          OMO_NO_MODIFY_PATH: "1",
+          FIXTURE_DOWNLOADS: downloads,
+          FIXTURE_PROBE: probe,
+        },
+      })
+
+      expect(result.error).toBeUndefined()
+      expect(result.status).toBe(exitCode === 0 ? 0 : 1)
+      expect(readFileSync(probe, "utf8").split("\n")[0]).toStartWith(`${launcher}.new.`)
+      expect(readdirSync(installDir)).toEqual(["omo"])
+
+      if (exitCode !== 0) {
+        expect(readFileSync(launcher, "utf8")).toBe(oldLauncher)
+        expect(statSync(launcher).mode & 0o777).toBe(0o751)
+        expect(readFileSync(receipt, "utf8")).toBe(oldReceipt)
+        expect(statSync(receipt).mode & 0o777).toBe(0o640)
+      } else {
+        expect(readFileSync(launcher, "utf8")).toBe(candidate)
+        expect(JSON.parse(readFileSync(receipt, "utf8"))).toMatchObject({
+          method: "standalone",
+          channel: "pinned",
+          version: "5.0.0",
+          asset: "omo-linux-x64",
+          binPath: launcher,
+          profileEdits: [],
+        })
+      }
+
+      const version = spawnSync(launcher, ["--version"], {
+        encoding: "utf8",
+        timeout: 10_000,
+        env: { PATH: "/usr/bin:/bin", FIXTURE_PROBE: probe },
+      })
+
+      expect(version.error).toBeUndefined()
+      expect(version.status).toBe(0)
+      expect(version.stdout.trim()).toBe(exitCode === 0 ? "omo 5.0.0" : "omo 4.0.0")
+    })
+  }
 })
 
 describe("install.sh other-install handling", () => {

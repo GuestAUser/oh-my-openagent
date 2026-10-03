@@ -294,6 +294,10 @@ main() {
     chmod +x "$work/omo"
     mkdir -p "$dir"
     cp "$work/omo" "${launcher}.new.$$"
+    if ! "${launcher}.new.$$" --version >&2; then
+      rm -f "${launcher}.new.$$"
+      fail "${launcher} candidate --version failed"
+    fi
     mv -f "${launcher}.new.$$" "$launcher"
   fi
 
