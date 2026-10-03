@@ -142,6 +142,50 @@ describe("install.sh candidate validation", () => {
 })
 
 describe("install.sh other-install handling", () => {
+  test("a real terminal prompts before removing another installation", async () => {
+    const f = fixture()
+    let output = ""
+    let answered = false
+    const child = Bun.spawn(["/bin/bash", "-c",
+      `source ${JSON.stringify(installer)}\nreport_other_installs ${JSON.stringify(f.newOmo)} 0 ${JSON.stringify(f.work)}`,
+    ], {
+      env: f.env,
+      terminal: {
+        cols: 100, rows: 24,
+        data(terminal, bytes) {
+          output += Buffer.from(bytes).toString()
+          if (!answered && output.includes("[y/N] ")) {
+            answered = true
+            terminal.write("yes\n")
+          }
+        },
+      },
+    })
+    const deadline = setTimeout(() => child.kill(), 5000)
+    try {
+      expect(await child.exited).toBe(0)
+      expect(answered).toBe(true)
+      expect(existsSync(f.packageDir)).toBe(false)
+      expect(readFileSync(f.unrelated, "utf8")).toBe("keep\n")
+    } finally {
+      clearTimeout(deadline)
+      child.terminal?.close()
+    }
+  })
+
+  test("receipt paths round-trip JSON special and control characters", () => {
+    const f = fixture()
+    const launcher = join(f.root, 'quoted "bin"\\line\n\t\u0001', "omo")
+    const profile = join(f.home, 'profile "quoted"\\name')
+    f.env.FIXTURE_LAUNCHER = launcher
+    f.env.FIXTURE_PROFILE = profile
+    const result = report(f, 'write_receipt latest 5.0.0 omo-linux-x64 "$FIXTURE_LAUNCHER" "$FIXTURE_PROFILE"')
+    expect(result.status).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(f.home, ".omo/install.json"), "utf8"))
+    expect(receipt.binPath).toBe(launcher)
+    expect(receipt.profileEdits).toEqual([profile])
+  })
+
   test("accepting the interactive prompt removes the bun-global install and leaves one omo on PATH", () => {
     const f = fixture()
     const result = report(f, `is_interactive() { return 0; }\nreport_other_installs ${JSON.stringify(f.newOmo)} 0 ${JSON.stringify(f.work)}\ntype -ap omo`, "yes\n")

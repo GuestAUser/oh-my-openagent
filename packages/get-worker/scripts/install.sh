@@ -216,10 +216,11 @@ remove_detected_install() { # remove_detected_install <record>
 }
 
 report_other_installs() { # report_other_installs <launcher> <remove flag> <work dir>
-  local launcher="$1" remove_flag="$2" work="$3" first record candidate command answer
+  local launcher="$1" remove_flag="$2" work="$3" first record candidate command answer interactive=0
   find_other_installs "$launcher" "$work/other-installs"
   [ -s "$work/other-installs" ] || return 0
   first="$(command -v omo 2>/dev/null || true)"
+  is_interactive && interactive=1
   exec 3<&0
   while IFS= read -r record; do
     candidate="$(printf '%s' "$record" | cut -f2)"
@@ -229,7 +230,7 @@ report_other_installs() { # report_other_installs <launcher> <remove flag> <work
     if [ "$first" = "$candidate" ]; then say "  It currently wins on PATH over ${launcher}."
     else say "  ${launcher} wins on PATH; ${candidate} is not used."; fi
     if [ "$remove_flag" = 1 ]; then remove_detected_install "$record" || true; continue; fi
-    if is_interactive; then
+    if [ "$interactive" = 1 ]; then
       printf 'Remove the other omo install at %s? [y/N] ' "$candidate" >&2
       IFS= read -r answer <&3 || answer=""
       case "$answer" in y | Y | yes | YES | Yes) remove_detected_install "$record" || true ;; *) say "  Kept it. Remove it later with: ${command}" ;; esac
@@ -240,12 +241,31 @@ report_other_installs() { # report_other_installs <launcher> <remove flag> <work
   exec 3<&-
 }
 
+json_string() {
+  local value="$1" char code index LC_ALL=C
+  printf '"'
+  for ((index=0; index<${#value}; index++)); do
+    char="${value:index:1}"
+    case "$char" in
+      '"') printf '\\"' ;;
+      '\') printf '\\\\' ;;
+      *)
+        printf -v code '%d' "'$char"
+        if [ "$code" -lt 32 ]; then printf '\\u%04x' "$code"
+        else printf '%s' "$char"
+        fi
+        ;;
+    esac
+  done
+  printf '"'
+}
+
 write_receipt() { # write_receipt <channel> <version> <asset> <launcher> <profile>
   mkdir -p "$HOME/.omo"
   local tmp
   tmp="$(mktemp "$HOME/.omo/install.json.XXXXXX")"
-  printf '{\n  "method": "standalone",\n  "channel": "%s",\n  "version": "%s",\n  "asset": "%s",\n  "binPath": "%s",\n  "profileEdits": [%s],\n  "installedAt": "%s"\n}\n' \
-    "$1" "$2" "$3" "$4" "${5:+\"$5\"}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$tmp"
+  printf '{\n  "method": "standalone",\n  "channel": "%s",\n  "version": "%s",\n  "asset": "%s",\n  "binPath": %s,\n  "profileEdits": [%s],\n  "installedAt": "%s"\n}\n' \
+    "$1" "$2" "$3" "$(json_string "$4")" "$(if [ -n "$5" ]; then json_string "$5"; fi)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$tmp"
   mv -f "$tmp" "$HOME/.omo/install.json"
 }
 
