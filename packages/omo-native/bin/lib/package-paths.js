@@ -79,9 +79,12 @@ export function updateTarget(
     // `$BUN_INSTALL/install/global` (or `~/.bun` when that env is unset). The prefix is the
     // ancestor of `/install/global/`, and the spawn overlays it so this install is the one that
     // moves. A legacy Bun home-root install must carry Bun's lockfile and keeps its ambient configuration.
+    const assignment = bunInstall === undefined ? "" : platform === "win32"
+      ? `$env:BUN_INSTALL='${bunInstall.replaceAll("'", "''")}'; `
+      : `BUN_INSTALL='${bunInstall.replaceAll("'", "'\\''")}' `
     return {
       manager: "bun",
-      command: `bun add -g ${spec}`,
+      command: `${assignment}bun add -g ${spec}`,
       argv: ["bun", "add", "-g", spec],
       ...(bunInstall === undefined ? {} : { env: { BUN_INSTALL: bunInstall } }),
     }

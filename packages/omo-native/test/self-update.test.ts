@@ -26,9 +26,9 @@ describe("updateTarget", () => {
   describe("#given a Bun global install layout", () => {
     test("#then the command is bun add -g and BUN_INSTALL is the prefix, not a --cwd into the package", () => {
       const root = bunRoot("/tmp/custom-bun/install/global/node_modules/omo-ai")
-      expect(updateTarget(root)).toEqual({
+      expect(updateTarget(root, "linux")).toEqual({
         manager: "bun",
-        command: `bun add -g ${SPEC}`,
+        command: `BUN_INSTALL='/tmp/custom-bun' bun add -g ${SPEC}`,
         argv: ["bun", "add", "-g", SPEC],
         env: { BUN_INSTALL: "/tmp/custom-bun" },
       })
@@ -38,23 +38,23 @@ describe("updateTarget", () => {
       const root = String.raw`C:\Users\omo user\.bun\install\global\node_modules\omo-ai`
       expect(updateTarget(root, "win32")).toEqual({
         manager: "bun",
-        command: `bun add -g ${SPEC}`,
+        command: `$env:BUN_INSTALL='C:/Users/omo user/.bun'; bun add -g ${SPEC}`,
         argv: ["bun", "add", "-g", SPEC],
         env: { BUN_INSTALL: "C:/Users/omo user/.bun" },
       })
     })
 
-    test("#then a path with shell metacharacters is carried in BUN_INSTALL, not quoted into the command", () => {
+    test("#then the manual command quotes a prefix with shell metacharacters", () => {
       const root = "/tmp/custom $HOME's bun/install/global/node_modules/omo-ai"
-      const target = updateTarget(root)
-      expect(target.command).toBe(`bun add -g ${SPEC}`)
+      const target = updateTarget(root, "linux")
+      expect(target.command).toBe(`BUN_INSTALL='/tmp/custom $HOME'\\''s bun' bun add -g ${SPEC}`)
       expect(target.env).toEqual({ BUN_INSTALL: "/tmp/custom $HOME's bun" })
     })
   })
 
   describe("#given an npm or unknown layout", () => {
     test("#then a global install updates its own prefix instead of the ambient npm prefix", () => {
-      expect(updateTarget("/tmp/prefix/lib/node_modules/omo-ai")).toEqual({
+      expect(updateTarget("/tmp/prefix/lib/node_modules/omo-ai", "linux")).toEqual({
         manager: "npm",
         command: `npm i -g --prefix '/tmp/prefix' ${SPEC}`,
         argv: ["npm", "i", "-g", "--prefix", "/tmp/prefix", SPEC],

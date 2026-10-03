@@ -13,7 +13,7 @@ describe("updateTarget", () => {
       const root = "/tmp/custom-bun/install/global/node_modules/omo-ai"
       expect(updateTarget(root, "linux", "5.1.1", "/home/u", noLockfile, "5.1.2")).toEqual({
         manager: "bun",
-        command: "bun add -g omo-ai@5.1.2",
+        command: "BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2",
         argv: ["bun", "add", "-g", "omo-ai@5.1.2"],
         env: { BUN_INSTALL: "/tmp/custom-bun" },
       })
@@ -87,10 +87,10 @@ describe("omo update against the channel dist-tag", () => {
     const code = await runSelfUpdate(["update"], h.options)
     expect(code).not.toBe(0)
     expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["bun", "add", "-g", "omo-ai@5.1.2"]])
-    expect(h.lines).toEqual(["omo is updated via bun: bun add -g omo-ai@5.1.2"])
+    expect(h.lines).toEqual(["omo is updated via bun: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2"])
     expect(h.errors).toEqual([
       "omo is still 5.1.1; 5.1.2 is published",
-      "omo: update failed; retry with: bun add -g omo-ai@5.1.2",
+      "omo: update failed; retry with: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2",
     ])
   })
 
@@ -104,7 +104,7 @@ describe("omo update against the channel dist-tag", () => {
       env: { PATH: "/usr/bin", BUN_INSTALL: "/tmp/custom-bun" },
     }])
     expect(h.lines).toEqual([
-      "omo is updated via bun: bun add -g omo-ai@5.1.2",
+      "omo is updated via bun: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2",
       "omo 5.1.1 -> 5.1.2 (engine: senpi 2026.9.29)",
     ])
     expect(h.errors).toEqual([])
@@ -167,7 +167,7 @@ describe("omo update against the channel dist-tag", () => {
     expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["bun", "add", "-g", "omo-ai"]])
     expect(h.lines).toEqual([
       "omo: could not confirm the latest omo-ai version from the npm registry; installing the unpinned omo-ai",
-      "omo is updated via bun: bun add -g omo-ai",
+      "omo is updated via bun: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai",
       "omo 5.1.1 -> 5.1.2 (engine: senpi 2026.9.29)",
     ])
   })
@@ -177,6 +177,6 @@ describe("omo update against the channel dist-tag", () => {
     const code = await runSelfUpdate(["update", "--dry-run"], h.options)
     expect(code).toBe(0)
     expect(h.spawned).toEqual([])
-    expect(h.lines).toEqual(["omo is updated via bun: bun add -g omo-ai@5.1.2"])
+    expect(h.lines).toEqual(["omo is updated via bun: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2"])
   })
 })
