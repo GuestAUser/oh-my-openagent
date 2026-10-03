@@ -125,6 +125,33 @@ describe("spawn_spec v1 persistence", () => {
 })
 
 describe("buildRespawnManagedSpec", () => {
+  test.each([
+    { fields: { reasoning: "medium", reasoning_effort: "low", variant: "high" }, expected: "medium" },
+    { fields: { reasoning: "medium" }, expected: "medium" },
+    { fields: { reasoning_effort: "low", variant: "high" }, expected: "low" },
+    { fields: { variant: "high" }, expected: "high" },
+    { fields: {}, expected: undefined },
+  ])("#given persisted effort $fields #when rebuilt #then restores $expected", async ({ fields, expected }) => {
+    // given
+    const { variant: _variant, ...model } = RESOLVED
+    const resolved = { ...model, ...fields }
+    const { manager, store } = makeManager({
+      planner: () => ({ kind: "resolved", plan: { ...PLAN, resolved_model: resolved, ...(expected === undefined ? {} : { variant: expected }) } }),
+    })
+    const result = await manager.start(managerSpec({ execution_mode: "in-process" }))
+    if (result.kind !== "started") throw new Error("expected started")
+    const record = store.load(result.task_id)
+    if (!record) throw new Error("expected persisted record")
+
+    // when
+    const rebuilt = buildRespawnManagedSpec(record, store.stateDir)
+
+    // then
+    if (!rebuilt.ok) throw new Error("expected rebuilt spec")
+    expect(rebuilt.spec.variant).toBe(expected)
+    expect(rebuilt.spec.resolvedModel).toEqual(resolved)
+  })
+
   test("#given an older curated spec allowing write and a member-scoped write tool #when child options are restored #then the current curated floor excludes both", () => {
     // given / when
     const options = buildChildSessionOptions({

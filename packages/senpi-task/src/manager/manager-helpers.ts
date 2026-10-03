@@ -147,6 +147,10 @@ export type BuildRespawnManagedSpecResult =
 // closed with a typed spawn_spec_unavailable instead of a silently weakened rebuild.
 export function buildRespawnManagedSpec(record: TaskRecord, stateDir: string): BuildRespawnManagedSpecResult {
   const spawnSpec = record.spawn_spec
+  const variant = record.resolved_model?.reasoning
+    ?? record.resolved_model?.reasoning_effort
+    ?? record.resolved_model?.variant
+
   if (spawnSpec === undefined || !isSpawnSpecV1(spawnSpec)) {
     return {
       ok: false,
@@ -168,9 +172,8 @@ export function buildRespawnManagedSpec(record: TaskRecord, stateDir: string): B
       ...(record.requested_model !== undefined ? { requestedModel: record.requested_model } : {}),
       ...(record.fallback_models !== undefined ? { fallbackModels: record.fallback_models } : {}),
       ...(record.resolved_model !== undefined ? { resolvedModel: record.resolved_model } : {}),
-      // The persisted variant mirror carries the child's thinking level; recover it exactly like the
-      // existing rpc respawn path does, or a rebuilt child silently loses its reasoning effort.
-      ...(record.resolved_model?.variant === undefined ? {} : { variant: record.resolved_model.variant }),
+      // Preserve the initial planner's precedence when restoring the thinking level.
+      ...(variant === undefined ? {} : { variant }),
       ...(record.agent_type !== undefined ? { agentType: record.agent_type } : {}),
       ...(spawnSpec.instructions !== undefined ? { instructions: spawnSpec.instructions } : {}),
       ...(record.tool_allow !== undefined ? { toolAllowlist: record.tool_allow } : {}),
