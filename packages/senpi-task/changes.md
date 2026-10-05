@@ -1,3 +1,51 @@
+## 2026-10-04 - Package-local test runs get the hermetic home (#9578)
+
+`test-support/warm-lazy-runtime.ts`, the package's own `bun test` preload, now installs the repo's hermetic home and agent dir before warming the lazy barrels, so `bun test` from inside `packages/senpi-task` can no longer start a task host in the real agent dir.
+
+## 2026-10-04 - A fake RPC child in a test can no longer signal a real process group (#9546)
+
+`handle-terminated-by-runner.test.ts` built its fake child with a literal `pid: 5532`. `handle.terminate()` went through the real `terminateRpcChild`, which probes and signals that pid's process GROUP (`process.kill(-5532, ...)`) on whatever machine runs the suite. On a macOS CI runner a foreign group 5532 existed: the probe got `EPERM` (counted as "exists") and the `SIGTERM` threw, which failed the v5.1.16 release-state PR. On a developer machine owning such a group, the test would really have sent it `SIGTERM`.
+
+`createRpcChildHandle` takes an optional `terminateChild` (default `terminateRpcChild`, so production is unchanged), and the test injects a recording fake. Its assertions now also check the call it recorded. A guard test stubs `process.kill` to throw and asserts that terminating a handle over a fake child never calls it. With the old handle, both fail; with the fix, they pass. The other rpc tests with a literal pid (`handle.test.ts`, `handle-steer-delivery`, `handle-user-abort`) never call `terminate()`.
+
+## 2026-10-04 - A warm host's first-turn events reach the task record (#9512)
+
+`runners/rpc-host/handle-listeners.ts`: the manager subscribes a child's observers (transcript log, run stats) only after `runner.start` returns. A warm host can finish a whole first turn in that window, including an in-session fallback hop (`retry_fallback_applied`). The handle used to deliver those events to an empty listener set, so the task record kept the dead primary model and no fallback attempt. Events emitted before the first subscription are now all kept, with no cap, because a partial history would bring the gap back. They are replayed to every observer attached in that same tick, then released.
+
+`handle-listeners.test.ts` covers:
+- the replay to two observers;
+- no second replay to a later observer;
+- live delivery afterwards;
+- a long first turn whose fallback hop is the first of 5,002 events, all of which still arrive in order.
+
+The tests fail without the buffer and with a 1,000-event cap.
+
+Review follow-ups (same change):
+- Until the buffer is released it is the single ordered log. An event that arrives meanwhile, including one an observer causes while its own replay is running, is appended. An observer still replaying reads it through its cursor; only observers that already finished replaying get it live. So each observer sees each event exactly once, in emission order.
+- A listener that throws during replay is reported (`onListenerError`, logged by the handle) instead of escaping `subscribe`, which runs after the child is already live.
+- `clearActive()` releases the buffer, so a child that ends before anyone subscribes keeps nothing.
+
+`rpc-process.ts` and `rpc-host/session-open.ts`: the one-time warnings now state the real limit. A process child, or a child on a host without `retry_fallback_profile`, still switches to its fallback models when a turn fails before any tool call (the manager's runtime fallback). What it loses is the switch after a tool call.
+
+## 2026-10-04 - A daemon-hosted child gets its own fallback chain on open_session (#9512)
+
+A child run on the shared task host never got its configured fallback models. `RpcRunnerSpec` had no field for them, the host session ran on the host's settings, and its in-session fallback refused to switch once the turn had made tool calls.
+
+The rpc runner spec now carries `fallbackModels` as `provider/model[:thinking]` selectors, through `modelSelector`, shared with the in-process runner. They are set on a fresh start in `runner.ts` and on both respawn paths in `manager-respawn.ts`, which read the record. `open-session.ts` sends them as `open_session.retryFallback` (`{ modelFallback: true, fallbackChains: { <model>: [...] } }`). A host advertising `retry_fallback_profile` (senpi 2026.10.6, senpi#2672) holds that chain for that one session, in memory only.
+
+**Who sees a change:** only children that have fallback models of their own. Today their chain is ignored; now they fall back through it. A child without fallback models sends no profile, so it keeps falling back through the user's settings exactly as before.
+
+When a child's chain cannot reach it, the user is warned once, with no silent loss:
+- **Older host:** a host without the capability gets no field, and `session-open.ts` warns once per runner, naming the host's engine version.
+- **Process runner:** a per-child `senpi --mode rpc` process has no CLI, environment or classic-RPC way to receive an in-memory chain. `rpc-process.ts` warns once per runner that such children fall back only through the user's settings. omo-senpi passes its host warning hook to that runner too.
+
+Tests:
+- `rpc-host-retry-fallback.test.ts` drives the real `RpcHostRunner` against the fake host. It covers the chain on a capable host, no profile for a child without a chain, an older host (no field, one warning for two children), and a reopen carrying the same chain.
+- `rpc-process-fallback-chain.test.ts` covers one warning for two process children with a chain, and none without one.
+- `runner.test.ts` covers selector threading, and `host-session-park.test.ts` the respawn path.
+
+Each source change goes red when reverted.
+
 ## 2026-10-03 - A kill is the one the runner issued; Windows external terminations are reported as crashes (#9471)
 
 `runners/rpc/exit-mapping.ts` `classifyChildExit` decided a signal-less exit was a kill on Windows when the child's stderr held nothing but Bun's child-reaper advisory. A killed child's teardown also writes diagnostics there: the memory component's `memory shutdown drain step failed` (EPERM on a state rename) and `memory shutdown drain hit its budget`. Those made a real kill read as a crash (`killed=false`), and the Windows RPC e2e `kill_marks_error_killed_true` failed intermittently on unrelated PRs.

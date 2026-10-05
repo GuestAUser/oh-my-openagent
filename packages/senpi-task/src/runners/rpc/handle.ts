@@ -27,6 +27,8 @@ export type CreateRpcChildHandleOptions = {
   readonly now: () => number
   /** The child's spawn env: where it keeps its agent dir, so its unexpected death is recorded there. */
   readonly childEnv?: NodeJS.ProcessEnv
+  /** Stops the child process; defaults to terminateRpcChild. A test passes a fake so it never signals a host process. */
+  readonly terminateChild?: (child: ChildProcess, options?: TerminateOptions) => Promise<void>
 }
 
 export type TrackedRpcChildHandle = RpcChildHandle & {
@@ -230,7 +232,7 @@ export function createRpcChildHandle(options: CreateRpcChildHandleOptions): Trac
     },
     terminate: (terminateOptions?: TerminateOptions) => {
       terminationRequested = true
-      return terminateRpcChild(child, terminateOptions)
+      return (options.terminateChild ?? terminateRpcChild)(child, terminateOptions)
     },
     startInitialPrompt: (text) => runPrompt(text),
   }

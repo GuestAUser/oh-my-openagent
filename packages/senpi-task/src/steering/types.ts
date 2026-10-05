@@ -55,6 +55,9 @@ export type SendInput = {
   readonly deliverAs?: SendDelivery
   readonly callerSessionId?: string
   readonly allScope?: boolean
+  // Deliver only to the run a handle minted at this epoch names (fenceRun): any other run answers
+  // `stale` and nothing is delivered. task_send never sets it.
+  readonly expectedRunEpoch?: number
 }
 
 // The SEND DEFAULT is "followUp": codex's followup_task routes a send to a running child as a
@@ -75,6 +78,8 @@ export type SendOutcome =
   | { readonly kind: "capacity_deferred"; readonly task_id: string; readonly reason: string }
   | { readonly kind: "queued"; readonly task_id: string; readonly queue_position: number }
   | { readonly kind: "not_continuable"; readonly task_id: string; readonly reason: string; readonly suggestion: string }
+  /** The caller named an earlier run (`expectedRunEpoch`) and the task has moved on; nothing was delivered. */
+  | { readonly kind: "stale"; readonly task_id: string; readonly run_epoch: number; readonly reason: string }
   // One-shot agents (see agents/interaction-policy.ts) refuse task_send in EVERY state; message is
   // the registry's sendDenialReminder, surfaced to the caller verbatim.
   | { readonly kind: "one_shot_agent"; readonly task_id: string; readonly agent: string; readonly message: string }
@@ -88,6 +93,9 @@ export type InterruptOutcome =
 
 export type CancelOptions = {
   readonly abort?: "request" | "skip"
+  // Cancel only the run a handle minted at this epoch names: any other run answers `stale` and
+  // nothing is cancelled. task_cancel never sets it.
+  readonly expectedRunEpoch?: number
 }
 
 export type CancelOutcome =
@@ -96,6 +104,8 @@ export type CancelOutcome =
   // reachable (or the child ends when its connection does not come back), and only then is it cancelled.
   | { readonly kind: "cancel_pending"; readonly task_id: string; readonly previous_status: TaskStatus; readonly reason: string }
   | { readonly kind: "noop"; readonly task_id: string; readonly status: TaskStatus; readonly reason: string }
+  /** The caller named an earlier run (`expectedRunEpoch`) and the task has moved on; nothing was cancelled. */
+  | { readonly kind: "stale"; readonly task_id: string; readonly status: TaskStatus; readonly run_epoch: number; readonly reason: string }
   | { readonly kind: "not_found"; readonly reason: string }
 
 export type SteeringEngine = {

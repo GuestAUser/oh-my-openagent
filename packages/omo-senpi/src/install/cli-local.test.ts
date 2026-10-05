@@ -23,6 +23,8 @@ async function makePackagedPlugin(): Promise<string> {
   await writeFixtureFile(join(pluginPath, "extensions", "omo.js"), "export default {}\n")
   await writeFixtureFile(join(pluginPath, "extensions", "omo-task.js"), "export const createTaskComponent = () => ({})\n")
   await writeFixtureFile(join(pluginPath, "extensions", "omo-computer-use.js"), "export {}\n")
+  await writeFixtureFile(join(pluginPath, "extensions", "omo-memory-doctor.js"), "export {}\n")
+  await writeFixtureFile(join(pluginPath, "extensions", "omo-memory-memfs.js"), "export {}\n")
   await writeFixtureFile(join(pluginPath, "extensions", "assets.generated.json"), "{}\n")
   await writeFixtureFile(join(pluginPath, "runtime", "agent-toolkit-sdk", "sdk.js"), "export {}\n")
   await writeFixtureFile(join(pluginPath, "runtime", "thread-sdk", "sdk.js"), "export {}\n")

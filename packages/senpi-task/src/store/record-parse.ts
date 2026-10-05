@@ -77,6 +77,7 @@ export function parseTaskRecord(value: unknown, path: string, warnings?: string[
   const backgroundMode = readOptionalBackgroundMode(value)
   const reviveDeliveryUncertain = parseOptionalReviveDeliveryUncertainty(value)
   const resumedRunEpoch = readOptionalNumber(value, "resumed_run_epoch")
+  const runStartEpoch = readOptionalNumber(value, "run_start_epoch")
   const startQueued = parseOptionalStartQueued(value)
   const runnerKind = readOptionalRunnerKind(value)
   const suspensionReason = readOptionalSuspensionReason(value)
@@ -139,6 +140,7 @@ export function parseTaskRecord(value: unknown, path: string, warnings?: string[
     ...(backgroundMode === undefined ? {} : { background_mode: backgroundMode }),
     ...(reviveDeliveryUncertain === undefined ? {} : { revive_delivery_uncertain: reviveDeliveryUncertain }),
     ...(resumedRunEpoch === undefined ? {} : { resumed_run_epoch: resumedRunEpoch }),
+    ...(runStartEpoch === undefined ? {} : { run_start_epoch: runStartEpoch }),
     ...(startQueued === undefined ? {} : { start_queued: startQueued }),
     ...(suspensionReason === undefined ? {} : { suspension_reason: suspensionReason }),
     ...(runnerKind === undefined ? {} : { runner_kind: runnerKind }),

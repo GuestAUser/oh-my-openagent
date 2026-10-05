@@ -6,6 +6,8 @@ export interface BuildExtensionOptions {
   advisorRuntimeOutputPath?: string
   toolkitSdkOutputPath?: string
   rollbackRuntimeOutputPath?: string
+  memoryDoctorOutputPath?: string
+  memoryMemfsOutputPath?: string
   computerUseOutputPath?: string
   gatewayStoreWorkerOutputPath?: string
   threadSdkOutputPath?: string
@@ -16,6 +18,8 @@ export function buildExtension(options?: BuildExtensionOptions): Promise<{
   memberInputs: string[]
   supervisorInputs: string[]
   advisorRuntimeInputs: string[]
+  memoryDoctorInputs: string[]
+  memoryMemfsInputs: string[]
   computerUseInputs: string[]
   toolkitSdkInputs: string[]
   rollbackRuntimeInputs: string[]

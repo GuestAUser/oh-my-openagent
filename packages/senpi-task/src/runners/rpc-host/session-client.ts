@@ -12,6 +12,7 @@ import {
   assertHostUsable,
   createSenpiRpcClient,
   probeWithEngine,
+  RETRY_FALLBACK_PROFILE_CAPABILITY,
   toWireOpen,
   type HostPromptDisposition,
   type HostProtocolProbe,
@@ -42,6 +43,8 @@ export interface OpenedHostSession {
   readonly attached: boolean
   readonly instanceId: string
   readonly engineVersion: string
+  /** The open asked for a session fallback chain the host cannot hold (no `retry_fallback_profile`). */
+  readonly retryFallbackDropped?: boolean
 }
 
 /** The turn-delivery seam: the commands a child handle issues on its session. */
@@ -153,7 +156,12 @@ export class HostSessionClient {
     client.onEvent((record) => this.ingest(record))
     await client.start()
     this.client = client
-    const opened = await client.openSession(toWireOpen(input)).catch(async (error: unknown) => {
+    // An older host would ignore the field and run the child on its own settings; leave it off there
+    // and report that the chain was not applied, so the caller can say so once.
+    const profileHonored = identity.capabilities.includes(RETRY_FALLBACK_PROFILE_CAPABILITY)
+    const retryFallbackDropped = !profileHonored && input.retryFallback !== undefined
+    const wire = toWireOpen(profileHonored ? input : withoutRetryFallback(input))
+    const opened = await client.openSession(wire).catch(async (error: unknown) => {
       this.client = undefined
       await client.stop()
       // The host went away with the open in flight: that is an unreachable host, not a session the
@@ -175,6 +183,7 @@ export class HostSessionClient {
       attached: this.reattached,
       instanceId: identity.instanceId,
       engineVersion: identity.engineVersion,
+      ...(retryFallbackDropped ? { retryFallbackDropped } : {}),
     }
   }
 
@@ -304,4 +313,9 @@ export class HostSessionClient {
 
 function unreachable(value: never): never {
   throw new Error(`unhandled host session command: ${JSON.stringify(value)}`)
+}
+
+function withoutRetryFallback(input: HostSessionOpenInput): HostSessionOpenInput {
+  const { retryFallback: _retryFallback, ...rest } = input
+  return rest
 }

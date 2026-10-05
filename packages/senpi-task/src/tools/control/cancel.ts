@@ -57,6 +57,9 @@ export async function runTaskCancel(manager: CancelManager, params: TaskCancelIn
         status: outcome.status,
         reason: outcome.reason,
       })
+    case "stale":
+      // task_cancel never names a run, so only a handle-fenced caller reaches this; keep the tool's result shapes.
+      return toolResult(`${outcome.reason} No change.`, { kind: "noop", task_id: outcome.task_id, status: outcome.status, reason: outcome.reason })
     case "not_found":
       return toolResult(outcome.reason, { kind: "not_found", reason: outcome.reason })
   }

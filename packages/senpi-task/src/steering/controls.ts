@@ -1,6 +1,7 @@
 import { log } from "@oh-my-opencode/utils"
 import type { ManagedChildHandle } from "../manager/child-handle"
 import type { TaskRecord } from "../state"
+import { runMoved, staleCancel } from "./stale-run"
 import type { CancelOptions, CancelOutcome, InterruptOutcome, SteeringPort } from "./types"
 
 export const CANCEL_PENDING_REASON = "cancel requested, child unreachable"
@@ -42,13 +43,19 @@ export function createSteeringControls(
     const record = resolve(idOrName)
     const destructionCause = options?.abort === "skip" ? "cancel_without_abort" : "cancel"
     if (record === undefined) return { kind: "not_found", reason: `No task found for "${idOrName}".` }
+    const expected = options?.expectedRunEpoch
+    if (runMoved(record, expected)) return staleCancel(record)
+    // The fence is re-checked inside the record lock by the cancel transition itself.
+    const fenced = expected === undefined ? {} : { expected_run_epoch: expected }
     if (record.status === "pending") {
       const result = port.store.transition(record.task_id, {
         type: "cancel",
         timestamp: nowIso(),
         ...(reason !== undefined ? { error_message: reason } : {}),
+        ...fenced,
       })
       if (!result.applied) {
+        if (runMoved(result.record, expected)) return staleCancel(result.record)
         return { kind: "noop", task_id: record.task_id, status: result.record.status, reason: `Task ${record.task_id} could not be cancelled from pending.` }
       }
       port.dequeuePending(record.task_id)
@@ -66,7 +73,7 @@ export function createSteeringControls(
     // The stop already waiting on this child's connection is the cancel; a repeat joins it.
     if (record.cancel_requested !== undefined && recovering) return cancelPending(record)
     if (options?.abort !== "skip" && recovering && reachable?.stopWhenReachable !== undefined) {
-      return stopWhenReachable(record, reachable, reason)
+      return stopWhenReachable(record, reachable, reason, expected)
     }
     // Transition BEFORE abort so this cancel is the single terminal write; the tracker's later
     // complete/cancel transition (settled by abort) is rejected by terminal idempotence.
@@ -76,8 +83,10 @@ export function createSteeringControls(
       timestamp: nowIso(),
       ...(reason !== undefined ? { error_message: reason } : {}),
       ...(runStats !== undefined ? { run_stats: runStats } : {}),
+      ...fenced,
     })
     if (!result.applied) {
+      if (runMoved(result.record, expected)) return staleCancel(result.record)
       return { kind: "noop", task_id: record.task_id, status: result.record.status, reason: `Task ${record.task_id} could not be cancelled from running.` }
     }
     const handle = port.liveHandle(record.task_id)
@@ -110,16 +119,21 @@ export function createSteeringControls(
   // be false - it may still be running on its host. The stop waits on the handle (applied on the host
   // before anything else once reachable, or the child ends when its connection never comes back), and
   // only then is the record cancelled and the child torn down, which releases its lane.
-  function stopWhenReachable(record: TaskRecord, handle: ManagedChildHandle, reason: string | undefined): CancelOutcome {
+  function stopWhenReachable(record: TaskRecord, handle: ManagedChildHandle, reason: string | undefined, expected?: number): CancelOutcome {
     const stop = handle.stopWhenReachable
     if (stop === undefined) throw new Error("stopWhenReachable requires a stoppable handle")
     // Durable first: a parent that shuts down or crashes before the stop lands leaves the cancel on the
     // record, and every revival finishes it instead of running the child again.
     const requestedAt = nowIso()
-    port.store.mutate(record.task_id, (fresh) => ({
-      ...fresh,
-      cancel_requested: { requested_at: requestedAt, ...(reason !== undefined ? { reason } : {}) },
-    }))
+    let moved: CancelOutcome | undefined
+    port.store.mutate(record.task_id, (fresh) => {
+      moved = runMoved(fresh, expected) ? staleCancel(fresh) : undefined
+      return moved !== undefined ? fresh : {
+        ...fresh,
+        cancel_requested: { requested_at: requestedAt, ...(reason !== undefined ? { reason } : {}) },
+      }
+    })
+    if (moved !== undefined) return moved
     port.stopRequested?.(record.task_id)
     port.store.appendEvent(record.task_id, { type: "cancel_requested", payload: { unreachable: true, ...(reason !== undefined ? { reason } : {}) } })
     // The pending stop is settled on every path, a failed record write included: the outcome tracker

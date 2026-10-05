@@ -116,6 +116,11 @@ export type TaskRecord = TaskRecordInput & TaskStartFailureRecordFields & {
   readonly notification: TaskNotification
   readonly revive_delivery_uncertain?: ReviveDeliveryUncertainty
   readonly resumed_run_epoch?: number
+  // The run_epoch the current user-visible run began at: the spawn epoch, then the epoch of each
+  // revive (a send to a finished task, a self-resumed turn). run_epoch also moves inside one run
+  // (start-time model fallback, runtime fallback handoff, reattach), so a handle minted anywhere in
+  // [run_start_epoch, run_epoch] still names the current run. Absent on records written before it.
+  readonly run_start_epoch?: number
   readonly start_queued?: StartQueued
   readonly suspension_reason?: SuspensionReason
   readonly runner_kind?: RunnerKind
