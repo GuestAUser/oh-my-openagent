@@ -26,6 +26,11 @@ function createFixture(): Fixture {
   const packageRoot = join(root, "app")
   mkdirSync(packageRoot, { recursive: true })
   cpSync(join(SOURCE_ROOT, "bin"), join(packageRoot, "bin"), { recursive: true })
+  writeFile(join(packageRoot, "bin", "lib", "npm-dist-tags.js"), `
+export function fetchNpmDistTagsSync() {
+  return { beta: "5.0.0-0.beta.99", latest: "4.9.0" }
+}
+`)
   writeFile(join(packageRoot, "package.json"), JSON.stringify({
     name: "omo-ai",
     version: "1.2.3-test.0",

@@ -223,15 +223,15 @@ describePosix("launcher child signal forwarding", () => {
       fixturePids.push(parent.pid, Number(readFileSync(harness.pidFile, "utf8")))
       allFixturePids.push(...fixturePids.slice(-2))
 
+      const receivedTerm = waitForContent(harness.signalLog, "SIGTERM")
       process.kill(parent.pid, "SIGINT")
-      await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+      process.kill(parent.pid, "SIGTERM")
 
-      const recorded = existsSync(harness.signalLog) ? readFileSync(harness.signalLog, "utf8") : ""
-      expect(recorded).not.toContain("SIGINT")
-      // The child is untouched and still running, so the launcher is still waiting on it.
-      expect(await Promise.race([parent.exit, Promise.resolve("running")])).toBe("running")
-      process.kill(parent.pid, "SIGKILL")
-      await parent.exit
+      await receivedTerm
+      // SIGTERM is the barrier: the child receives it once and drains before the launcher exits.
+      expect((await parent.exit).code).toBe(0)
+      expect(readFileSync(harness.parentLog, "utf8")).toContain("exitCode=0")
+      expect(readFileSync(harness.signalLog, "utf8")).toBe("SIGTERM\n")
     }, 30_000)
   })
 

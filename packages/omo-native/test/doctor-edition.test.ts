@@ -36,6 +36,11 @@ function createFixture(installLayout: InstallLayout = "npm"): Fixture {
   // long form, so the two spellings of one directory would disagree in the Update: line.
   const packageRoot = realpathSync.native(packagePath)
   cpSync(join(SOURCE_ROOT, "bin"), join(packageRoot, "bin"), { recursive: true })
+  writeFile(join(packageRoot, "bin", "lib", "npm-dist-tags.js"), `
+export function fetchNpmDistTagsSync() {
+  return { beta: "5.0.0-0.beta.99", latest: "4.9.0" }
+}
+`)
   writeFile(join(packageRoot, "package.json"), JSON.stringify({
     name: "omo-ai",
     version: "5.0.0-0.beta.51",
@@ -134,7 +139,7 @@ describe("omo doctor edition summary", () => {
       const result = run(fixture)
       expect(result.status).toBe(0)
       const summary = editionLine(result.stdout)
-      expect(summary).toMatch(/^INFO omo · Edition: Native · Installed: 5\.0\.0-0\.beta\.51 \(engine: senpi 2026\.8\.9\) · Latest: /)
+      expect(summary).toMatch(/^INFO omo · Edition: Native · Installed: 5\.0\.0-0\.beta\.51 \(engine: senpi 2026\.8\.9\) · Latest: 5\.0\.0-0\.beta\.99$/)
       expect(lineAfter(result.stdout, summary)).toBe(`INFO Update: ${updateTarget(fixture.packageRoot).command}`)
       expect(updateTarget(fixture.packageRoot).argv).toContain("--prefix")
     })

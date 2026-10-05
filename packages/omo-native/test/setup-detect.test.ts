@@ -132,6 +132,11 @@ function snapshotTree(root: string): { files: string[]; hashes: Record<string, s
 function createLauncherFixture(fixture: Fixture): string {
   const packageRoot = join(fixture.root, "app")
   cpSync(join(SOURCE_ROOT, "bin"), join(packageRoot, "bin"), { recursive: true })
+  write(join(packageRoot, "bin", "lib", "npm-dist-tags.js"), `
+export function fetchNpmDistTagsSync() {
+  return { beta: "5.0.0-0.beta.99", latest: "4.9.0" }
+}
+`)
   write(join(packageRoot, "package.json"), JSON.stringify({
     name: "omo-ai", version: "1.2.3-test.0", type: "module",
     dependencies: { "@code-yeongyu/senpi": "2026.8.9" },
