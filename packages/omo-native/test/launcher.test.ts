@@ -153,10 +153,15 @@ function runtimeInterpreter(runtime: "node" | "bun"): string | undefined {
 const PUBLISHED_BETA = "1.2.3-test.1"
 const NPM_UPDATE_HINT = `omo is updated via npm: npm i -g omo-ai@${PUBLISHED_BETA}`
 
+/** The PowerShell single-quoted form the launcher prints on Windows. */
+function powershellQuoted(value: string): string {
+  return `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`
+}
+
 /** A Bun global install prints its own BUN_INSTALL prefix, so the copied command updates this install. */
 function bunUpdateHint(fixture: Fixture): string {
   const prefix = fixture.packageRoot.replaceAll("\\", "/").replace(/\/install\/global\/node_modules\/omo-ai$/, "")
-  const assignment = process.platform === "win32" ? `$env:BUN_INSTALL='${prefix}'; ` : `BUN_INSTALL='${prefix}' `
+  const assignment = process.platform === "win32" ? `$env:BUN_INSTALL=${powershellQuoted(prefix)}; ` : `BUN_INSTALL='${prefix}' `
   return `omo is updated via bun: ${assignment}bun add -g omo-ai@${PUBLISHED_BETA}`
 }
 
@@ -166,7 +171,7 @@ function npmPrefixUpdateHint(fixture: Fixture): string {
   const prefix = process.platform === "win32"
     ? normalizedRoot.replace(/\/node_modules\/omo-ai$/, "")
     : normalizedRoot.replace(/\/lib\/node_modules\/omo-ai$/, "")
-  const quotedPrefix = process.platform === "win32" ? JSON.stringify(prefix) : `'${prefix}'`
+  const quotedPrefix = process.platform === "win32" ? powershellQuoted(prefix) : `'${prefix}'`
   return `omo is updated via npm: npm i -g --prefix ${quotedPrefix} omo-ai@${PUBLISHED_BETA}`
 }
 

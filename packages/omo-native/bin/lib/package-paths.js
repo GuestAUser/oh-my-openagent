@@ -14,6 +14,14 @@ export function packageManifest() {
 }
 
 const BUN_GLOBAL_PACKAGE_SUFFIX = "/install/global/node_modules/omo-ai"
+// pnpm's global dir is `<pnpm home>/global/<layout version>`; its packages resolve into the virtual store.
+const PNPM_GLOBAL_PACKAGE = /\/global\/\d+\/node_modules\/\.pnpm\/[^/]+\/node_modules\/omo-ai$/
+const PNPM_VIRTUAL_STORE = "/node_modules/.pnpm/"
+
+/** PowerShell single-quoted string: doubling every quote PowerShell treats as single (', U+2018-U+201B) escapes it. */
+function powershellQuote(value) {
+  return `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`
+}
 
 /** The npm dist-tag this build ships on: a prerelease version is on beta, a stable one on latest. */
 export function releaseChannel(version = packageManifest().version) {
@@ -80,7 +88,7 @@ export function updateTarget(
     // ancestor of `/install/global/`, and the spawn overlays it so this install is the one that
     // moves. A legacy Bun home-root install must carry Bun's lockfile and keeps its ambient configuration.
     const assignment = bunInstall === undefined ? "" : platform === "win32"
-      ? `$env:BUN_INSTALL='${bunInstall.replaceAll("'", "''")}'; `
+      ? `$env:BUN_INSTALL=${powershellQuote(bunInstall)}; `
       : `BUN_INSTALL='${bunInstall.replaceAll("'", "'\\''")}' `
     return {
       manager: "bun",
@@ -89,20 +97,39 @@ export function updateTarget(
       ...(bunInstall === undefined ? {} : { env: { BUN_INSTALL: bunInstall } }),
     }
   }
+
+  if (PNPM_GLOBAL_PACKAGE.test(normalizedRoot)) {
+    return {
+      manager: "pnpm",
+      command: `pnpm add -g ${spec}`,
+      argv: ["pnpm", "add", "-g", spec],
+    }
+  }
+
+  // Any other pnpm virtual-store path belongs to a pnpm project or workspace. npm run inside the
+  // store entry would rewrite pnpm's tree, so it skips the npm prefix branches and takes the
+  // unknown-layout fallback below instead.
+  const isNpmLayout = !normalizedRoot.includes(PNPM_VIRTUAL_STORE)
+
   const globalSuffix = "/lib/node_modules/omo-ai"
   const localSuffix = "/node_modules/omo-ai"
   let prefix
   let global = true
-  if (platform !== "win32" && normalizedRoot.endsWith(globalSuffix)) {
+  // A `<dir>/lib` that carries its own package.json is a project named lib, not a global prefix.
+  const isPosixGlobal = isNpmLayout
+    && platform !== "win32"
+    && normalizedRoot.endsWith(globalSuffix)
+    && !exists(join(normalizedRoot.slice(0, -localSuffix.length), "package.json"))
+  if (isPosixGlobal) {
     prefix = normalizedRoot.slice(0, -globalSuffix.length) || "/"
-  } else if (normalizedRoot.endsWith(localSuffix)) {
+  } else if (isNpmLayout && normalizedRoot.endsWith(localSuffix)) {
     prefix = normalizedRoot.slice(0, -localSuffix.length) || "/"
     if (/^[A-Za-z]:$/.test(prefix)) prefix += "/"
     // Windows global packages share the local layout; a project manifest owns a local install.
     global = platform === "win32" && !exists(join(prefix, "package.json"))
   }
   if (prefix !== undefined) {
-    const quotedPrefix = platform === "win32" ? JSON.stringify(prefix) : `'${prefix.replaceAll("'", "'\\''")}'`
+    const quotedPrefix = platform === "win32" ? powershellQuote(prefix) : `'${prefix.replaceAll("'", "'\\''")}'`
     return {
       manager: "npm",
       command: `npm i ${global ? "-g " : ""}--prefix ${quotedPrefix} ${spec}`,

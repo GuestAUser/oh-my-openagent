@@ -126,27 +126,33 @@ describe("omo update against the channel dist-tag", () => {
     expect(h.errors).toEqual([])
   })
 
-  test("#given a current product with a missing engine #then it reinstalls instead of reporting success", async () => {
+  test("#given a current product with a missing engine that a same-version reinstall leaves missing #then it reinstalls once and fails naming the error and the repair", async () => {
     const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.2"] })
-    let reads = 0
+    const engineError = "senpi engine files are incomplete: /p/node_modules/@code-yeongyu/senpi/dist/core/brand.js is missing"
     const code = await runSelfUpdate(["update"], {
       ...h.options,
-      readInstalled: () => ({ omo: "5.1.2", engine: reads++ === 0 ? "unknown" : "2026.10.3" }),
+      // npm and Bun treat a same-version install as already satisfied, so the partial tree survives it.
+      readInstalled: () => ({ omo: "5.1.2", engine: "unknown", engineError }),
     })
-    expect(code).toBe(0)
+    expect(code).toBe(1)
     expect(h.spawned).toHaveLength(1)
     expect(h.spawned[0]?.args).toEqual(["add", "-g", "omo-ai@5.1.2"])
+    expect(h.errors).toEqual([
+      `omo: Senpi engine is still incomplete after update (${engineError}); the package manager keeps a same-version engine directory as-is, so remove that directory, then run: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2`,
+    ])
   })
 
   test("#given a successful package manager that leaves the engine missing #then update fails", async () => {
     const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.1", "5.1.2"] })
     const code = await runSelfUpdate(["update"], {
       ...h.options,
-      readInstalled: () => ({ omo: "5.1.2", engine: "unknown" }),
+      readInstalled: () => ({ omo: "5.1.2", engine: "unknown", engineError: "could not resolve @code-yeongyu/senpi" }),
     })
     expect(code).toBe(1)
     expect(h.spawned).toHaveLength(1)
-    expect(h.errors).toHaveLength(1)
+    expect(h.errors).toEqual([
+      "omo: Senpi engine is still incomplete after update (could not resolve @code-yeongyu/senpi); the package manager keeps a same-version engine directory as-is, so remove that directory, then run: BUN_INSTALL='/tmp/custom-bun' bun add -g omo-ai@5.1.2",
+    ])
   })
 
   test("#given a beta install #then it follows the beta dist-tag", async () => {

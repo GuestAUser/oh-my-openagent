@@ -12,12 +12,14 @@ export function formatUpdateCommand(update) {
 
 export function readInstalledVersion() {
   let engine = "unknown"
+  let engineError
   try {
     engine = readJson(join(resolveSenpi().packageRoot, "package.json")).version
-  } catch {
+  } catch (cause) {
     // The product version is still reportable when the engine tree cannot be resolved.
+    engineError = cause instanceof Error ? cause.message : String(cause)
   }
-  return { omo: packageManifest().version, engine }
+  return { omo: packageManifest().version, engine, engineError }
 }
 
 export function formatVersionChange(before, after) {
@@ -34,7 +36,7 @@ export function formatVersionChange(before, after) {
  * prove the install moved (#9198). An unreachable registry falls back to the unpinned channel spec.
  * `run` defaults to `runChild` so tests inject a spawn without touching the child-process helper.
  *
- * @typedef {{ omo: string, engine: string }} InstalledVersion
+ * @typedef {{ omo: string, engine: string, engineError?: string }} InstalledVersion
  * @typedef {{ status: number | null, signal: string | null }} ChildResult
  * @typedef {{ stdio?: "inherit", windowsHide?: boolean, env?: NodeJS.ProcessEnv }} RunOptions
  * @typedef {{ manager: string, command: string, argv: string[], env?: Record<string, string> }} UpdateTarget
@@ -110,7 +112,10 @@ export async function runSelfUpdate(args, options = {}) {
     return 1
   }
   if (after.engine === "unknown") {
-    error(`omo: Senpi engine is incomplete after update; retry with: ${update.command}`)
+    // A same-version reinstall is a no-op for npm and Bun: they keep the existing engine directory
+    // as-is, so rerunning the same command can never restore its missing files.
+    const cause = after.engineError ?? "the engine package did not resolve"
+    error(`omo: Senpi engine is still incomplete after update (${cause}); the package manager keeps a same-version engine directory as-is, so remove that directory, then run: ${update.command}`)
     return 1
   }
   log(formatVersionChange(before, after))

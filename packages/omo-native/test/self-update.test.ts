@@ -50,6 +50,13 @@ describe("updateTarget", () => {
       expect(target.command).toBe(`BUN_INSTALL='/tmp/custom $HOME'\\''s bun' bun add -g ${SPEC}`)
       expect(target.env).toEqual({ BUN_INSTALL: "/tmp/custom $HOME's bun" })
     })
+
+    test("#then the Windows command single-quotes the prefix and doubles every PowerShell single quote", () => {
+      const root = "C:\\Users\\O\u2019Brien $dev`s it's\\.bun\\install\\global\\node_modules\\omo-ai"
+      const target = updateTarget(root, "win32")
+      expect(target.command).toBe(`$env:BUN_INSTALL='C:/Users/O\u2019\u2019Brien $dev\`s it''s/.bun'; bun add -g ${SPEC}`)
+      expect(target.env).toEqual({ BUN_INSTALL: "C:/Users/O\u2019Brien $dev`s it's/.bun" })
+    })
   })
 
   describe("#given an npm or unknown layout", () => {
@@ -66,12 +73,52 @@ describe("updateTarget", () => {
       expect(target.argv).toEqual(["npm", "i", "--prefix", "/tmp/omo project", "omo-ai"])
     })
 
+    test("#then a project directory named lib updates that project instead of a global prefix", () => {
+      const hasManifest = (path: string) => path.replaceAll("\\", "/") === "/srv/mono/lib/package.json"
+      expect(updateTarget("/srv/mono/lib/node_modules/omo-ai", "linux", "5.1.13", "/home/u", hasManifest)).toEqual({
+        manager: "npm",
+        command: "npm i --prefix '/srv/mono/lib' omo-ai",
+        argv: ["npm", "i", "--prefix", "/srv/mono/lib", "omo-ai"],
+      })
+    })
+
     test("#then Windows preserves the custom global prefix and recognizes a project manifest", () => {
       const root = String.raw`C:\omo project\node_modules\omo-ai`
-      expect(updateTarget(root, "win32", "5.1.13", "C:/home", () => false).argv)
-        .toEqual(["npm", "i", "-g", "--prefix", "C:/omo project", "omo-ai"])
+      expect(updateTarget(root, "win32", "5.1.13", "C:/home", () => false)).toEqual({
+        manager: "npm",
+        command: "npm i -g --prefix 'C:/omo project' omo-ai",
+        argv: ["npm", "i", "-g", "--prefix", "C:/omo project", "omo-ai"],
+      })
       expect(updateTarget(root, "win32", "5.1.13", "C:/home", (path) => path.replaceAll("\\", "/") === "C:/omo project/package.json").argv)
         .toEqual(["npm", "i", "--prefix", "C:/omo project", "omo-ai"])
+    })
+
+    test("#then a Windows npm prefix is PowerShell single-quoted so $, backtick and smart quotes stay literal", () => {
+      const root = "C:\\Users\\O\u2018Brien $dev`s it's\\AppData\\Roaming\\npm\\node_modules\\omo-ai"
+      const target = updateTarget(root, "win32", "5.1.13", "C:/home", () => false)
+      expect(target.command).toBe("npm i -g --prefix 'C:/Users/O\u2018\u2018Brien $dev`s it''s/AppData/Roaming/npm' omo-ai")
+      expect(target.argv).toEqual(["npm", "i", "-g", "--prefix", "C:/Users/O\u2018Brien $dev`s it's/AppData/Roaming/npm", "omo-ai"])
+    })
+
+    test("#then a pnpm global install is updated by pnpm add -g", () => {
+      const root = "/home/u/.local/share/pnpm/global/5/node_modules/.pnpm/omo-ai@5.1.19/node_modules/omo-ai"
+      expect(updateTarget(root, "linux", "5.1.19", "/home/u", () => false, "5.1.20")).toEqual({
+        manager: "pnpm",
+        command: "pnpm add -g omo-ai@5.1.20",
+        argv: ["pnpm", "add", "-g", "omo-ai@5.1.20"],
+      })
+      const windowsRoot = String.raw`C:\Users\u\AppData\Local\pnpm\global\5\node_modules\.pnpm\omo-ai@5.1.19\node_modules\omo-ai`
+      expect(updateTarget(windowsRoot, "win32", "5.1.19", "C:/Users/u", () => false, "5.1.20").argv)
+        .toEqual(["pnpm", "add", "-g", "omo-ai@5.1.20"])
+    })
+
+    test("#then a pnpm project install never runs npm inside the pnpm store and is not treated as global", () => {
+      const root = "/srv/app/node_modules/.pnpm/omo-ai@5.1.19/node_modules/omo-ai"
+      expect(updateTarget(root, "linux", "5.1.19", "/home/u", () => true, "5.1.20")).toEqual({
+        manager: "npm",
+        command: "npm i -g omo-ai@5.1.20",
+        argv: ["npm", "i", "-g", "omo-ai@5.1.20"],
+      })
     })
 
     test("#then an unknown source layout retains the npm global fallback", () => {
