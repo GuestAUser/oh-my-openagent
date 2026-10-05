@@ -151,8 +151,24 @@ function runtimeInterpreter(runtime: "node" | "bun"): string | undefined {
 
 // The fixture is on 1.2.3-test.0 (beta channel); the stubbed registry publishes 1.2.3-test.1 on beta.
 const PUBLISHED_BETA = "1.2.3-test.1"
-const BUN_UPDATE_HINT = `omo is updated via bun: bun add -g omo-ai@${PUBLISHED_BETA}`
 const NPM_UPDATE_HINT = `omo is updated via npm: npm i -g omo-ai@${PUBLISHED_BETA}`
+
+/** A Bun global install prints its own BUN_INSTALL prefix, so the copied command updates this install. */
+function bunUpdateHint(fixture: Fixture): string {
+  const prefix = fixture.packageRoot.replaceAll("\\", "/").replace(/\/install\/global\/node_modules\/omo-ai$/, "")
+  const assignment = process.platform === "win32" ? `$env:BUN_INSTALL='${prefix}'; ` : `BUN_INSTALL='${prefix}' `
+  return `omo is updated via bun: ${assignment}bun add -g omo-ai@${PUBLISHED_BETA}`
+}
+
+/** An npm global install prints its own --prefix, so the copied command updates this install. */
+function npmPrefixUpdateHint(fixture: Fixture): string {
+  const normalizedRoot = fixture.packageRoot.replaceAll("\\", "/")
+  const prefix = process.platform === "win32"
+    ? normalizedRoot.replace(/\/node_modules\/omo-ai$/, "")
+    : normalizedRoot.replace(/\/lib\/node_modules\/omo-ai$/, "")
+  const quotedPrefix = process.platform === "win32" ? JSON.stringify(prefix) : `'${prefix}'`
+  return `omo is updated via npm: npm i -g --prefix ${quotedPrefix} omo-ai@${PUBLISHED_BETA}`
+}
 
 /** Answers the dist-tags lookup from FAKE_DIST_TAGS (JSON), or as an unreachable registry when it is unset. */
 function stubRegistry(fixture: Fixture): void {
@@ -491,7 +507,7 @@ await runLauncher(["say", "hi"])
         stubRegistry(fixture)
         const result = run(fixture, ["update", "--print"], REGISTRY_ENV)
         expect(result.status).toBe(0)
-        expect(result.stdout.trim()).toBe(BUN_UPDATE_HINT)
+        expect(result.stdout.trim()).toBe(bunUpdateHint(fixture))
         expect(existsSync(fixture.captureFile)).toBe(false)
       })
 
@@ -500,7 +516,7 @@ await runLauncher(["say", "hi"])
         stubRegistry(fixture)
         const result = run(fixture, ["update", "--dry-run"], REGISTRY_ENV)
         expect(result.status).toBe(0)
-        expect(result.stdout.trim()).toBe(BUN_UPDATE_HINT)
+        expect(result.stdout.trim()).toBe(bunUpdateHint(fixture))
         expect(existsSync(fixture.captureFile)).toBe(false)
       })
 
@@ -509,7 +525,7 @@ await runLauncher(["say", "hi"])
         stubRegistry(fixture)
         const result = run(fixture, ["update", "--dry-run"], REGISTRY_ENV)
         expect(result.status).toBe(0)
-        expect(result.stdout.trim()).toBe(NPM_UPDATE_HINT)
+        expect(result.stdout.trim()).toBe(npmPrefixUpdateHint(fixture))
         expect(existsSync(fixture.captureFile)).toBe(false)
       })
 
@@ -571,7 +587,7 @@ await runLauncher(["say", "hi"])
         stubPackageManagerSpawn(fixture)
         const result = run(fixture, ["update"], { ...REGISTRY_ENV, FAKE_INSTALLS: PUBLISHED_BETA, BUN_INSTALL: "/wrong" })
         expect(result.status).toBe(0)
-        expect(result.stdout).toContain(BUN_UPDATE_HINT)
+        expect(result.stdout).toContain(bunUpdateHint(fixture))
         expect(result.stdout).toContain(`omo 1.2.3-test.0 -> ${PUBLISHED_BETA} (engine: senpi 2026.8.9)`)
         const spawned = JSON.parse(readFileSync(fixture.captureFile, "utf8"))
         expect(spawned.command).toBe("bun")

@@ -186,10 +186,13 @@ describe("omo launcher update routing", () => {
   test("#given plain omo update #then the launcher still runs the pinned install", () => {
     const fixture = launcherFixture()
     const result = launch(fixture, ["update"])
+    // The npm global layout updates its own prefix, never the ambient npm prefix.
+    const normalizedRoot = fixture.root.replaceAll("\\", "/")
+    const prefix = process.platform === "win32" ? `${normalizedRoot}/prefix/lib` : `${normalizedRoot}/prefix`
     expect(JSON.parse(readFileSync(fixture.captureFile, "utf8"))).toEqual({
       target: "install",
       command: "npm",
-      args: ["i", "-g", "omo-ai@1.2.3-test.1"],
+      args: ["i", "-g", "--prefix", prefix, "omo-ai@1.2.3-test.1"],
     })
     // The fake manager leaves the version unchanged, so the post-install check reports it; the
     // install still ran, which is what this routing case is about.
