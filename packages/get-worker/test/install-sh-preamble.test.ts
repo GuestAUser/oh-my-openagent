@@ -75,4 +75,21 @@ describe("install.sh POSIX preamble", () => {
     expect(installer.status).toBe(0)
     expect(wrapper.stderr + installer.stderr).toBe("")
   })
+
+  test("the full installer reports a missing downloader instead of exiting silently", () => {
+    const { root, bin } = sandbox()
+    for (const name of ["bash", "mktemp", "rm", "cat", "id", "uname", "grep", "ls"]) linkCommand(bin, name)
+    mkdirSync(join(root, "home"))
+
+    const result = spawnSync("/bin/sh", ["-s", "--", "5.0.0"], {
+      input: script,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { HOME: join(root, "home"), PATH: bin, TMPDIR: root, OMO_INSTALL_ALLOW_SUDO: "1" },
+    })
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("curl or wget is required")
+    expect(existsSync(join(root, "home", ".local", "bin", "omo"))).toBe(false)
+  })
 })

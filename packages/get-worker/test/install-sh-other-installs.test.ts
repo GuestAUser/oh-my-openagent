@@ -50,6 +50,36 @@ function report(f: Fixture, body: string, input?: string) {
   })
 }
 
+const goodCandidate = "#!/bin/sh\necho 'omo 5.0.0'\n"
+
+function installMain(f: Fixture, env: Record<string, string>, candidate = goodCandidate, checksummed = candidate) {
+  const downloads = join(f.root, "downloads")
+  file(join(downloads, "omo-linux-x64"), candidate)
+  const checksum = createHash("sha256").update(checksummed).digest("hex")
+  file(join(downloads, "SHA256SUMS"), `${checksum}  omo-linux-x64\n`)
+
+  return spawnSync("/bin/bash", ["-c", [
+    `source ${JSON.stringify(installer)}`,
+    "detect_asset() { printf '%s\\n' omo-linux-x64; }",
+    'download() { cp "$FIXTURE_DOWNLOADS/$2" "$3"; }',
+    "main 5.0.0",
+  ].join("\n")], {
+    encoding: "utf8",
+    timeout: 10_000,
+    cwd: f.root,
+    env: {
+      HOME: f.home,
+      PATH: "/usr/bin:/bin",
+      SHELL: "/bin/sh",
+      TMPDIR: f.work,
+      OMO_INSTALL_ALLOW_SUDO: "1",
+      OMO_NO_MODIFY_PATH: "1",
+      FIXTURE_DOWNLOADS: downloads,
+      ...env,
+    },
+  })
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
@@ -142,6 +172,24 @@ describe("install.sh candidate validation", () => {
 })
 
 describe("install.sh other-install handling", () => {
+  test("a launcher reached through a symlinked install directory is never removed as another install", () => {
+    const f = fixture()
+    const realDir = join(f.root, "real bin")
+    const aliasDir = join(f.root, "alias bin")
+    file(join(realDir, "omo"), goodCandidate, true)
+    symlinkSync(realDir, aliasDir)
+    file(join(f.home, ".omo", "install.json"), JSON.stringify({ method: "standalone", binPath: join(realDir, "omo") }))
+    f.env.PATH = `${realDir}:${join(f.root, "tools")}:/usr/bin:/bin`
+
+    const result = report(f, `report_other_installs ${JSON.stringify(join(aliasDir, "omo"))} 1 ${JSON.stringify(f.work)}`)
+    const version = spawnSync(join(aliasDir, "omo"), ["--version"], { encoding: "utf8", timeout: 10_000 })
+
+    expect(result.status).toBe(0)
+    expect(existsSync(join(realDir, "omo"))).toBe(true)
+    expect(version.status).toBe(0)
+    expect(version.stdout.trim()).toBe("omo 5.0.0")
+  })
+
   test("a real terminal prompts before removing another installation", async () => {
     const f = fixture()
     let output = ""
@@ -269,5 +317,93 @@ describe("install.sh other-install handling", () => {
     expect(result.status).toBe(0)
     expect(existsSync(oldStandalone)).toBe(false)
     expect(readFileSync(neighbor, "utf8")).toBe("keep\n")
+  })
+})
+
+describe("install.sh main robustness", () => {
+  test("shell syntax in the install path stays data in the profile line and the printed PATH command", () => {
+    const f = fixture()
+    const home = join(f.root, 'home "quoted" $(touch injected) `touch ticked` back\\slash')
+    const installDir = join(home, ".local", "bin")
+    mkdirSync(home)
+
+    const result = installMain(f, { HOME: home, OMO_NO_MODIFY_PATH: "" })
+    expect(result.status).toBe(0)
+
+    const sourced = spawnSync("/bin/sh", ["-c", '. "$HOME/.profile"; printf "%s\\n" "$PATH"'], {
+      encoding: "utf8", timeout: 10_000, cwd: f.root, env: { HOME: home, PATH: "/usr/bin:/bin" },
+    })
+    const hint = result.stderr.slice(result.stderr.indexOf("run: export PATH=") + "run: ".length, result.stderr.lastIndexOf(") and run: omo"))
+    const pasted = spawnSync("/bin/sh", ["-c", `${hint}\nprintf "%s\\n" "$PATH"`], {
+      encoding: "utf8", timeout: 10_000, cwd: f.root, env: { PATH: "/usr/bin:/bin" },
+    })
+
+    expect(sourced.status).toBe(0)
+    expect(sourced.stdout.split(":")[0]).toBe(installDir)
+    expect(pasted.status).toBe(0)
+    expect(pasted.stdout.split(":")[0]).toBe(installDir)
+    expect(existsSync(join(f.root, "injected"))).toBe(false)
+    expect(existsSync(join(f.root, "ticked"))).toBe(false)
+  })
+
+  test.skipIf(process.getuid?.() === 0)("a profile that cannot be written fails the install without a receipt or temp file", () => {
+    const f = fixture()
+    const profile = join(f.home, ".profile")
+    const original = "# existing user profile\n"
+    file(profile, original)
+    chmodSync(profile, 0o444)
+
+    const result = installMain(f, { OMO_NO_MODIFY_PATH: "" })
+
+    expect(result.status).toBe(1)
+    expect(readFileSync(profile, "utf8")).toBe(original)
+    expect(existsSync(join(f.home, ".omo", "install.json"))).toBe(false)
+    expect(readdirSync(f.home).filter((name) => name.startsWith(".profile.omo."))).toEqual([])
+  })
+
+  test("a backslash in TMPDIR neither corrupts the checksum nor relaxes it", () => {
+    const f = fixture()
+    const tmp = join(f.work, "tmp\\backslash")
+    const launcher = join(f.home, ".local", "bin", "omo")
+    mkdirSync(tmp)
+
+    const accepted = installMain(f, { TMPDIR: tmp })
+    expect(accepted.status).toBe(0)
+    expect(readFileSync(launcher, "utf8")).toBe(goodCandidate)
+
+    const rejected = installMain(f, { TMPDIR: tmp }, "#!/bin/sh\necho 'omo 6.0.0'\n", "something else\n")
+    expect(rejected.status).toBe(1)
+    expect(readFileSync(launcher, "utf8")).toBe(goodCandidate)
+    expect(readdirSync(tmp)).toEqual([])
+  })
+
+  test("an apostrophe in TMPDIR still cleans the work directory on success and failure", () => {
+    const f = fixture()
+    const tmp = join(f.work, "tmp's")
+    mkdirSync(tmp)
+
+    const succeeded = installMain(f, { TMPDIR: tmp })
+    expect(succeeded.status).toBe(0)
+    expect(readdirSync(tmp)).toEqual([])
+
+    const failed = installMain(f, { TMPDIR: tmp }, "#!/bin/sh\nexit 23\n")
+    expect(failed.status).toBe(1)
+    expect(readdirSync(tmp)).toEqual([])
+  })
+
+  test("SIGTERM during candidate validation keeps the old launcher and removes the staged one", () => {
+    const f = fixture()
+    const installDir = join(f.home, ".local", "bin")
+    const launcher = join(installDir, "omo")
+    const oldLauncher = "#!/bin/sh\necho 'omo 4.0.0'\n"
+    file(launcher, oldLauncher, true)
+
+    // The candidate's --version run signals the installer itself, so the interruption lands at an exact point.
+    const result = installMain(f, {}, '#!/bin/sh\nkill -TERM "$PPID"\nexit 0\n')
+
+    expect(result.signal).toBe("SIGTERM")
+    expect(readFileSync(launcher, "utf8")).toBe(oldLauncher)
+    expect(readdirSync(installDir)).toEqual(["omo"])
+    expect(readdirSync(f.work)).toEqual([])
   })
 })

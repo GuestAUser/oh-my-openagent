@@ -42,8 +42,9 @@ fetch() { # fetch <url> <output file|->
 }
 
 sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  # Hash stdin: GNU sha256sum prefixes the digest with a backslash when it has to escape the file name.
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum <"$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 <"$1" | awk '{print $1}'
   elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 "$1" | awk '{print $NF}'
   else fail "sha256sum, shasum or openssl is required to verify the download"
   fi
@@ -105,19 +106,42 @@ profile_file() {
   esac
 }
 
-ensure_path() { # ensure_path <dir>; prints the edited profile, or nothing
-  local dir="$1" profile line tmp
+dquote_escape() { # dquote_escape <text>; escapes text for use inside double quotes in sh, bash and zsh
+  local text="$1"
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//\$/\\\$}"
+  printf '%s' "${text//\`/\\\`}"
+}
+
+ensure_path() { # ensure_path <dir>; prints the edited profile, or nothing; fails when the profile cannot be written
+  local dir="$1" profile line tmp escaped
   case ":${PATH}:" in *":${dir}:"*) return 0 ;; esac
   if [ -n "${GITHUB_PATH:-}" ]; then printf '%s\n' "$dir" >>"$GITHUB_PATH"; fi
   [ "${OMO_NO_MODIFY_PATH:-}" = 1 ] && return 0
   profile="$(profile_file)"
-  if [[ "$profile" == *.fish ]]; then line="fish_add_path -g \"${dir}\""; else line="export PATH=\"${dir}:\$PATH\""; fi
-  mkdir -p "$(dirname "$profile")"
-  touch "$profile"
-  tmp="$(mktemp "${profile}.omo.XXXXXX")"
-  awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' "$profile" >"$tmp"
-  printf '%s\n%s\n%s\n' "$MARK_BEGIN" "$line" "$MARK_END" >>"$tmp"
-  cat "$tmp" >"$profile" && rm -f "$tmp"
+  if [[ "$profile" == *.fish ]]; then
+    # fish double quotes treat backslash, double quote and dollar as special, but not backtick
+    escaped="${dir//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    escaped="${escaped//\$/\\\$}"
+    line="fish_add_path -g \"${escaped}\""
+  else
+    line="export PATH=\"$(dquote_escape "$dir"):\$PATH\""
+  fi
+
+  # This runs in a command substitution, where errexit is not inherited: every step returns its failure.
+  mkdir -p "$(dirname "$profile")" || return 1
+  touch "$profile" || return 1
+  tmp="$(mktemp "${profile}.omo.XXXXXX")" || return 1
+  if ! awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1;next} $0==e{skip=0;next} !skip' "$profile" >"$tmp" \
+    || ! printf '%s\n%s\n%s\n' "$MARK_BEGIN" "$line" "$MARK_END" >>"$tmp" \
+    || ! cat "$tmp" >"$profile"; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  rm -f "$tmp" || return 1
   printf '%s\n' "$profile"
 }
 
@@ -182,6 +206,7 @@ find_other_installs() { # find_other_installs <launcher> <output file>
     candidate="${dir%/}/omo"
     [ -f "$candidate" ] || [ -L "$candidate" ] || continue
     [ "$candidate" = "$launcher" ] && continue
+    [ "$candidate" -ef "$launcher" ] && continue
     case "\n$seen" in *"\n$candidate\n"*) continue ;; esac
     seen="${seen}${candidate}\n"
     classify_other_install "$candidate" "$prior" >>"$output" || {
@@ -288,6 +313,7 @@ main() {
     fail "refusing to run as root; run it as your user (set OMO_INSTALL_ALLOW_SUDO=1 to override)"
   fi
   [ -n "${HOME:-}" ] || fail "HOME is not set"
+  command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || fail "curl or wget is required"
 
   local asset version dir launcher work expected actual profile channel
   asset="$(detect_asset)"
@@ -298,8 +324,8 @@ main() {
   say "Installing omo ${version} (${asset}) into ${dir}"
 
   work="$(mktemp -d "${TMPDIR:-/tmp}/omo-install.XXXXXX")"
-  # shellcheck disable=SC2064 # expand now: the local is gone when the EXIT trap fires after main returns
-  trap "rm -rf '${work}'" EXIT
+  # shellcheck disable=SC2064 # expand now: the locals are gone when the EXIT trap fires after main returns
+  trap "rm -f -- $(shell_quote "${launcher}.new.$$"); rm -rf -- $(shell_quote "$work")" EXIT
   download "$version" SHA256SUMS "$work/SHA256SUMS" "$base"
   expected="$(awk -v a="$asset" '$2==a || $2=="*"a {print $1}' "$work/SHA256SUMS" | head -n1)"
   [ -n "$expected" ] || fail "SHA256SUMS for ${version} has no entry for ${asset}"
@@ -326,13 +352,13 @@ main() {
   fi
   "$launcher" --version >&2 || fail "${launcher} --version failed"
 
-  profile="$(ensure_path "$dir")"
+  profile="$(ensure_path "$dir")" || fail "could not add ${dir} to PATH in your shell profile $(profile_file)"
   report_other_installs "$launcher" "$remove_other_installs" "$work"
   write_receipt "$channel" "$version" "$asset" "$launcher" "$profile"
   say ""
   say "omo ${version} is installed at ${launcher}."
   if [ -n "$profile" ]; then
-    say "${profile} puts ${dir} on PATH; open a new shell (or run: export PATH=\"${dir}:\$PATH\") and run: omo"
+    say "${profile} puts ${dir} on PATH; open a new shell (or run: export PATH=\"$(dquote_escape "$dir"):\$PATH\") and run: omo"
   else
     say "Run: omo"
   fi
