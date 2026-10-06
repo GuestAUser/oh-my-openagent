@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.21] - 2026-10-06
+
+**5.1.20 was never published.** Its run stopped on a Windows smoke-test failure after the platform packages reached npm but before `omo-ai` did, so 5.1.21 is the first release carrying the changes below. The orphaned `oh-my-opencode-<platform>@5.1.20` packages are not installed by any `omo-ai` or `oh-my-opencode` release, and this release moves their `latest` tag on. ([#9618](https://github.com/code-yeongyu/oh-my-openagent/issues/9618))
+
+**Queued goals resume after stale or failed compaction feedback.** A goal message accepted while compaction was running could remain queued after the summary was rejected. The engine now attempts that continuation through its normal admission checks. Cancelling compaction does not restart work, and required-compaction limits still apply. ([senpi#2778](https://github.com/code-yeongyu/senpi/issues/2778), [senpi#2780](https://github.com/code-yeongyu/senpi/pull/2780))
+
+### Added
+
+**`hideFreeModels: true` keeps a provider's free models out of the picker, so its paid models are quick to find.** Set it on the provider block in `models.json`; without it, nothing changes. Thanks to @Bearmancer. ([senpi#2720](https://github.com/code-yeongyu/senpi/issues/2720), [senpi#2773](https://github.com/code-yeongyu/senpi/pull/2773))
+
+**Keenable can serve web search.** `websearch.json` accepts `keenable`, using its keyed API when an `apiKey` is set and its shared public tier otherwise. It is used only when listed; the default search chain is unchanged. Thanks to @audreyt. ([senpi#2775](https://github.com/code-yeongyu/senpi/pull/2775))
+
+**Code mode can run each JavaScript kernel in its own process.** With `isolation.js: "process"`, a kernel crash (a segfault, out-of-memory, `process.exit`) no longer takes the session down; the next cell starts on a fresh kernel and a notice names the crash. It is off by default and guards against crashes, not hostile code. ([senpi#2752](https://github.com/code-yeongyu/senpi/issues/2752))
+
+**The frontend skill routes tone and situation to more component catalogs.** A new reference tells the agent which catalog to read for AI-agent UI, charts, landing sections, brutalist or Tailwind-only builds and other tones, how to explore a catalog's registry, and which licences and site terms allow what. ([#9644](https://github.com/code-yeongyu/oh-my-openagent/issues/9644))
+
+**`/mcp` opens an interactive server manager in the terminal.** Server rows offer the actions available for their current state: enable or disable, change exposure, test, reconnect, and sign in or out. Tool, detail, and log views are available alongside them. Only trusted global and project servers can be edited, and edits preserve the rest of the config. Imported, extension, skill, and untrusted project servers remain read-only. Non-TUI clients receive status text. Thanks to @wuhaoyujerry. ([senpi#2716](https://github.com/code-yeongyu/senpi/issues/2716), [senpi#2747](https://github.com/code-yeongyu/senpi/pull/2747))
+
+### Fixed
+
+**A long retried request is no longer cut off after 11 minutes.** Once a retried request starts streaming, the retry watchdog stops timing it, so a long answer, tool calls or further turns are no longer aborted at 660 seconds. A retry that never starts still ends, with a message saying so. ([senpi#2804](https://github.com/code-yeongyu/senpi/issues/2804), [senpi#2805](https://github.com/code-yeongyu/senpi/pull/2805))
+
+**The Windows release smoke test tolerates a briefly held checkout.** Moving the checkout's `.omo` aside could fail with `EPERM` while a file scanner still held a handle, which stopped the 5.1.20 release. The smoke now retries that rename for up to about 12 seconds and, if it still fails, names the processes it can see holding the directory. ([#9618](https://github.com/code-yeongyu/oh-my-openagent/issues/9618), [#9657](https://github.com/code-yeongyu/oh-my-openagent/pull/9657))
+
+**A session's first turn no longer stalls when a gateway refuses a forced tool choice.** When an OpenAI-compatible gateway refuses a forced `tool_choice` inside a successful stream, the request is retried once without it, as it already was for the same refusal returned as an error, so you no longer have to type `continue`. ([senpi#2801](https://github.com/code-yeongyu/senpi/issues/2801), [senpi#2806](https://github.com/code-yeongyu/senpi/pull/2806))
+
+**A reload during session startup waits instead of breaking extensions.** A reload requested while startup handlers are still running is deferred, so later handlers no longer fail with `stale extension generation after reload`. Thanks to @Bearmancer. ([senpi#2719](https://github.com/code-yeongyu/senpi/issues/2719), [senpi#2771](https://github.com/code-yeongyu/senpi/pull/2771))
+
+**Codex plugin updates stop selecting stale cached hooks.** Successful installs remove obsolete selectable cache versions, so restarting Codex picks up the requested version and its hook trust. Actual hook changes still require review. ([#9631](https://github.com/code-yeongyu/oh-my-openagent/issues/9631), [#9632](https://github.com/code-yeongyu/oh-my-openagent/pull/9632))
+
+**Wake notices explain why waiting ended and report the elapsed wait.** They distinguish a timer firing from background work ending. Cache figures are labeled cumulative estimates, and compaction logs include the session identity so an event can be attributed when several sessions share an agent directory. ([senpi#2778](https://github.com/code-yeongyu/senpi/issues/2778))
+
+**Code-mode settings that were accepted but ignored now take effect.** `kernelTools.enabled: false` disables JavaScript `tool(fn)` and Python `@tool`. `languages.pyInterpreter` selects the exact Python executable; an unusable path makes Python unavailable with a warning naming the setting. `prompt.advertiseHelpers: true` adds the helper-documentation pointer to the eval description. Unknown settings and fallback-to-default warnings now reach the user. ([senpi#2763](https://github.com/code-yeongyu/senpi/issues/2763), [senpi#2764](https://github.com/code-yeongyu/senpi/pull/2764))
+
+**A project-selected Python executable requires project trust before session startup.** A code-mode config that names an interpreter now follows the same trust boundary as a project MCP config. ([senpi#2772](https://github.com/code-yeongyu/senpi/pull/2772))
+
+**RPC model lists pick up credentials changed by another session.** A fresh model-list request reflects newly connected or removed providers without reopening the session, fixing the empty-list case after connecting a provider. ([senpi#2769](https://github.com/code-yeongyu/senpi/issues/2769), [senpi#2770](https://github.com/code-yeongyu/senpi/pull/2770))
+
+**Model-family fallback requires an explicit selector for OpenGateway and Vercel AI Gateway.** Having credentials for one of these gateways no longer makes an unqualified fallback choose it silently. ([senpi#2774](https://github.com/code-yeongyu/senpi/issues/2774), [senpi#2776](https://github.com/code-yeongyu/senpi/pull/2776))
+
+**`/btw` answers render as Markdown.** Headings, bold text, inline code, lists, and code blocks display in the side panel instead of exposing their raw markup. Thanks to @nahwan-kim. ([senpi#2766](https://github.com/code-yeongyu/senpi/pull/2766))
+
+### Changed
+
+**OmO runs on senpi 2026.10.10-3.** Full engine notes: [senpi 2026.10.10-2](https://github.com/code-yeongyu/senpi/releases/tag/v2026.10.10-2) and [senpi 2026.10.10-3](https://github.com/code-yeongyu/senpi/releases/tag/v2026.10.10-3).
+
+**GPT-6 Astra gets a shorter goal-continuation prompt.** It now carries only the goal contract (objective, allowed turn endings, the blocked floor); other models keep the full prompt. ([senpi#2796](https://github.com/code-yeongyu/senpi/issues/2796))
+
 ## [5.1.19] - 2026-10-05
 
 **Code mode can install JavaScript packages per session.** 5.1.19 runs on senpi 2026.10.10. A cell that is only `%bun add <package ...>` or `%npm add <package ...>` installs packages into the session's own managed environment without restarting the kernel, and the next cell imports them. The project's `package.json` and `node_modules` are untouched and package scripts never run. ([senpi 2026.10.10](https://github.com/code-yeongyu/senpi/releases/tag/v2026.10.10))
