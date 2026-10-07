@@ -117,6 +117,42 @@ describe("omo update against the channel dist-tag", () => {
     expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["npm", "i", "-g", "--prefix", "/tmp/prefix", "omo-ai@5.1.2"]])
   })
 
+  test("#given a global pnpm install #then it still spawns pnpm with the exact target", async () => {
+    const root = "/home/u/.local/share/pnpm/global/5/node_modules/.pnpm/omo-ai@5.1.1/node_modules/omo-ai"
+    const h = harness({
+      distTags: { latest: "5.1.2" },
+      versions: ["5.1.1", "5.1.2"],
+      resolveUpdate: (targetVersion) => updateTarget(root, "linux", "5.1.1", "/home/u", () => false, targetVersion),
+    })
+    expect(await runSelfUpdate(["update"], h.options)).toBe(0)
+    expect(h.spawned.map((call) => [call.command, ...call.args])).toEqual([["pnpm", "add", "-g", "omo-ai@5.1.2"]])
+    expect(h.errors).toEqual([])
+  })
+
+  for (const args of [["update"], ["update", "--dry-run"], ["update", "--print"]]) {
+    test(`#given a project pnpm install #then ${args.join(" ")} refuses before registry lookup or spawn`, async () => {
+      const root = "/srv/app/node_modules/.pnpm/omo-ai@5.1.1/node_modules/omo-ai"
+      const h = harness({
+        distTags: { latest: "5.1.2" },
+        versions: ["5.1.1"],
+        resolveUpdate: (targetVersion) => updateTarget(root, "linux", "5.1.1", "/home/u", () => false, targetVersion),
+      })
+      let registryLookups = 0
+      const code = await runSelfUpdate(args, {
+        ...h.options,
+        fetchDistTags: () => {
+          registryLookups += 1
+          return h.options.fetchDistTags()
+        },
+      })
+      expect(code).toBe(1)
+      expect(registryLookups).toBe(0)
+      expect(h.spawned).toEqual([])
+      expect(h.lines).toEqual([])
+      expect(h.errors).toHaveLength(1)
+    })
+  }
+
   test("#given the installed version already equals the dist-tag #then it says so and runs no install", async () => {
     const h = harness({ distTags: { latest: "5.1.2" }, versions: ["5.1.2"] })
     const code = await runSelfUpdate(["update"], h.options)

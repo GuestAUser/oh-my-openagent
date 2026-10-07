@@ -63,6 +63,7 @@ function installedVersion(root) {
  * @param {string} [homeDir]
  * @param {(path: string) => boolean} [exists]
  * @param {string} [targetVersion]
+ * @returns {{ manager: string, command: string, argv: string[], env?: Record<string, string>, unsupportedReason?: string }}
  */
 export function updateTarget(
   root = packageRoot,
@@ -106,23 +107,27 @@ export function updateTarget(
     }
   }
 
-  // Any other pnpm virtual-store path belongs to a pnpm project or workspace. npm run inside the
-  // store entry would rewrite pnpm's tree, so it skips the npm prefix branches and takes the
-  // unknown-layout fallback below instead.
-  const isNpmLayout = !normalizedRoot.includes(PNPM_VIRTUAL_STORE)
+  // Project/workspace virtual stores must not fall back to an unrelated global installation.
+  if (normalizedRoot.includes(PNPM_VIRTUAL_STORE)) {
+    return {
+      manager: "pnpm",
+      command: `pnpm add ${spec}`,
+      argv: ["pnpm", "add", spec],
+      unsupportedReason: `automatic update is unsupported for project-local pnpm installs; update omo-ai with pnpm in that project: pnpm add ${spec}`,
+    }
+  }
 
   const globalSuffix = "/lib/node_modules/omo-ai"
   const localSuffix = "/node_modules/omo-ai"
   let prefix
   let global = true
   // A `<dir>/lib` that carries its own package.json is a project named lib, not a global prefix.
-  const isPosixGlobal = isNpmLayout
-    && platform !== "win32"
+  const isPosixGlobal = platform !== "win32"
     && normalizedRoot.endsWith(globalSuffix)
     && !exists(join(normalizedRoot.slice(0, -localSuffix.length), "package.json"))
   if (isPosixGlobal) {
     prefix = normalizedRoot.slice(0, -globalSuffix.length) || "/"
-  } else if (isNpmLayout && normalizedRoot.endsWith(localSuffix)) {
+  } else if (normalizedRoot.endsWith(localSuffix)) {
     prefix = normalizedRoot.slice(0, -localSuffix.length) || "/"
     if (/^[A-Za-z]:$/.test(prefix)) prefix += "/"
     // Windows global packages share the local layout; a project manifest owns a local install.

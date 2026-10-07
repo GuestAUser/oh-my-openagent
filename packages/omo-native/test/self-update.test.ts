@@ -112,14 +112,41 @@ describe("updateTarget", () => {
         .toEqual(["pnpm", "add", "-g", "omo-ai@5.1.20"])
     })
 
-    test("#then a pnpm project install never runs npm inside the pnpm store and is not treated as global", () => {
-      const root = "/srv/app/node_modules/.pnpm/omo-ai@5.1.19/node_modules/omo-ai"
-      expect(updateTarget(root, "linux", "5.1.19", "/home/u", () => true, "5.1.20")).toEqual({
-        manager: "npm",
-        command: "npm i -g omo-ai@5.1.20",
-        argv: ["npm", "i", "-g", "omo-ai@5.1.20"],
+    for (const platform of ["linux", "win32"] as const) {
+      test(`#then a ${platform} pnpm project install refuses automatic update without spawning`, async () => {
+        const root = platform === "win32"
+          ? String.raw`C:\srv\app\node_modules\.pnpm\omo-ai@5.1.19\node_modules\omo-ai`
+          : "/srv/app/node_modules/.pnpm/omo-ai@5.1.19/node_modules/omo-ai"
+        const resolveUpdate = (targetVersion?: string) =>
+          updateTarget(root, platform, "5.1.19", "/home/u", () => true, targetVersion)
+        const target = resolveUpdate("5.1.20")
+        expect(target.manager).toBe("pnpm")
+        expect(target.command).toBe("pnpm add omo-ai@5.1.20")
+        expect(target.argv).toEqual(["pnpm", "add", "omo-ai@5.1.20"])
+        expect(target.unsupportedReason).toBeDefined()
+
+        const spawned: unknown[] = []
+        const errors: string[] = []
+        let registryLookups = 0
+        const code = await runSelfUpdate(["update"], {
+          resolveUpdate,
+          fetchDistTags: () => {
+            registryLookups += 1
+            return null
+          },
+          readInstalled: () => ({ omo: "5.1.19", engine: "2026.9.29" }),
+          run: async (...call: unknown[]) => {
+            spawned.push(call)
+            return { status: 0, signal: null }
+          },
+          error: (line) => errors.push(line),
+        })
+        expect(code).toBe(1)
+        expect(registryLookups).toBe(0)
+        expect(spawned).toEqual([])
+        expect(errors).toHaveLength(1)
       })
-    })
+    }
 
     test("#then an unknown source layout retains the npm global fallback", () => {
       expect(updateTarget("/tmp/checkout/packages/omo-native").argv).toEqual(["npm", "i", "-g", SPEC])

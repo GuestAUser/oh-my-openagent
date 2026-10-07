@@ -39,7 +39,7 @@ export function formatVersionChange(before, after) {
  * @typedef {{ omo: string, engine: string, engineError?: string }} InstalledVersion
  * @typedef {{ status: number | null, signal: string | null }} ChildResult
  * @typedef {{ stdio?: "inherit", windowsHide?: boolean, env?: NodeJS.ProcessEnv }} RunOptions
- * @typedef {{ manager: string, command: string, argv: string[], env?: Record<string, string> }} UpdateTarget
+ * @typedef {{ manager: string, command: string, argv: string[], env?: Record<string, string>, unsupportedReason?: string }} UpdateTarget
  * @typedef {{
  *   resolveUpdate?: (targetVersion?: string) => UpdateTarget,
  *   fetchDistTags?: () => Record<string, unknown> | null,
@@ -69,10 +69,16 @@ export async function runSelfUpdate(args, options = {}) {
     return usage.exitCode
   }
 
+  const initialUpdate = resolveUpdate()
+  if (initialUpdate.unsupportedReason !== undefined) {
+    error(`omo: ${initialUpdate.unsupportedReason}`)
+    return 1
+  }
+
   const before = readInstalled()
   const channel = releaseChannel(before.omo)
   const target = channelDistTagVersion(fetchDistTags(), before.omo)
-  const update = resolveUpdate(target)
+  const update = target === undefined ? initialUpdate : resolveUpdate(target)
 
   if (target === undefined) {
     log(`omo: could not confirm the ${channel} omo-ai version from the npm registry; installing the unpinned ${channelPackageSpec(before.omo)}`)
