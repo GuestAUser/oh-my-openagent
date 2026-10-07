@@ -121,6 +121,10 @@ export type TaskRecord = TaskRecordInput & TaskStartFailureRecordFields & {
   // (start-time model fallback, runtime fallback handoff, reattach), so a handle minted anywhere in
   // [run_start_epoch, run_epoch] still names the current run. Absent on records written before it.
   readonly run_start_epoch?: number
+  // The highest epoch a rollback took back (`rollbackDetachedRevival`). It was issued once, so it is never issued
+  // again: the next run starts above it, and a handle minted for the undone run stays stale instead of naming a
+  // later one. Absent when no rollback ever undid a run.
+  readonly burnt_epoch?: number
   readonly start_queued?: StartQueued
   readonly suspension_reason?: SuspensionReason
   readonly runner_kind?: RunnerKind

@@ -56,6 +56,8 @@ export interface SenpiExtensionAPI {
     },
   ): void
   getFlag(name: string): boolean | string | undefined
+  /** The session's current name (`/name`, `set_session_name`); undefined when it has none. */
+  getSessionName?(): string | undefined
   sendMessage(message: Record<string, unknown>, options?: Record<string, unknown>): void | Promise<void>
   sendUserMessage(content: string | readonly Record<string, unknown>[], options?: { deliverAs?: "steer" | "followUp" }): void
   /** senpi's slash-command registry: extension commands, prompt templates, and `skill:<name>` entries. */

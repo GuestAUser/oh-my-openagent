@@ -152,6 +152,7 @@ export function composeTaskEngine(deps: ComposeTaskEngineDeps): TaskEngine {
     deps.coordinator,
     () => runtime.parentState().kind === "streaming",
     (taskIds, error) => notifier.recordDeliveryFailure({ taskIds, error }),
+    () => runtime.parentModel(),
   )
   const notifier = createCompletionNotifier({
     notifier: parentNotifier,

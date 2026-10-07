@@ -10,7 +10,7 @@ import { registerLifecycleReattachPorts, type ReattachResult, type RespawnResult
 import { RunnerError } from "../runners/in-process/runner-error"
 import { RpcProcessRunner } from "../runners/rpc-process"
 import type { RpcChildHandle, RpcRunnerSpec } from "../runners/types"
-import { createTaskRecord, isSpawnSpecV1, parseTaskId, syncTaskIdFloor } from "../state"
+import { createTaskRecord, isSpawnSpecV1, nextRunEpoch, parseTaskId, syncTaskIdFloor } from "../state"
 import { resolvedReasoningFields } from "../state/resolved-reasoning"
 import { TaskIdSpaceExhaustedError } from "../state/id"
 import type { ResolvedModelRecord, TaskRecord, TaskRunStats } from "../state"
@@ -869,7 +869,7 @@ class TaskManagerImpl implements TaskManager {
 
     this.#releaseSlot(record.task_id, context.model, record.notification.run_epoch)
 
-    const nextEpoch = record.notification.run_epoch + 1
+    const nextEpoch = nextRunEpoch(record)
     const nextRecord: TaskRecord = {
       ...record,
       model: nextModel.display,
@@ -1416,7 +1416,7 @@ class TaskManagerImpl implements TaskManager {
     const live = this.#live.get(taskId)
     const record = this.#tryLoad(taskId)
     if (live === undefined || record === null || record === undefined) return { ok: false }
-    const epoch = record.notification.run_epoch + 1
+    const epoch = nextRunEpoch(record)
     if (!this.#concurrency.tryAcquire(live.model, taskId, epoch)) return { ok: false }
     let released = false
     const release = (): void => {
@@ -1435,7 +1435,7 @@ class TaskManagerImpl implements TaskManager {
   }
 
   #reserveForDetachedRevive(record: TaskRecord): { readonly ok: false } | { readonly ok: true; commit(): void; release(): void } {
-    const epoch = record.notification.run_epoch + 1
+    const epoch = nextRunEpoch(record)
     if (!this.#concurrency.tryAcquire(record.model, record.task_id, epoch)) return { ok: false }
     let released = false
     const release = (): void => {
@@ -1460,7 +1460,7 @@ class TaskManagerImpl implements TaskManager {
 
   #reserveForReattach(record: TaskRecord): { readonly ok: false } | { readonly ok: true; release(): void } {
     if (isTerminalRecord(record)) return { ok: true, release: () => undefined }
-    const epoch = record.notification.run_epoch + 1
+    const epoch = nextRunEpoch(record)
     if (!this.#concurrency.tryAcquire(record.model, record.task_id, epoch)) return { ok: false }
     return { ok: true, release: () => this.#concurrency.releaseLease(record.task_id, epoch) }
   }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 
 import { interactionPolicyForAgent } from "../agents"
-import type { TaskRecord } from "../state"
+import { nextRunEpoch, type TaskRecord } from "../state"
 import type { SendInput, SendOutcome } from "./types"
 
 export function oneShotPolicyDenial(record: TaskRecord): SendOutcome | undefined {
@@ -87,9 +87,9 @@ export function buildRevived(record: TaskRecord, timestamp: string): TaskRecord 
     status: "running",
     residency_state: "resident",
     updated_at: timestamp,
-    notification: { ...record.notification, run_epoch: record.notification.run_epoch + 1 },
+    notification: { ...record.notification, run_epoch: nextRunEpoch(record) },
     // A revive is a new user-visible run: handles minted before it no longer name the current run.
-    run_start_epoch: record.notification.run_epoch + 1,
+    run_start_epoch: nextRunEpoch(record),
   }
 }
 

@@ -1927,6 +1927,28 @@
           },
           "additionalProperties": false
         },
+        "projection": {
+          "default": {
+            "max_entries_per_directory": 40,
+            "max_bytes": 24576
+          },
+          "type": "object",
+          "properties": {
+            "max_entries_per_directory": {
+              "default": 40,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "max_bytes": {
+              "default": 24576,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        },
         "compile_warn_tokens": {
           "default": 30000,
           "type": "integer",
@@ -2173,6 +2195,22 @@
                   },
                   "query_expansion": {
                     "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "projection": {
+                "type": "object",
+                "properties": {
+                  "max_entries_per_directory": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max_bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "additionalProperties": false
@@ -4041,6 +4079,22 @@
               },
               "additionalProperties": false
             },
+            "projection": {
+              "type": "object",
+              "properties": {
+                "max_entries_per_directory": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
             "compile_warn_tokens": {
               "type": "integer",
               "exclusiveMinimum": 0,
@@ -4285,6 +4339,22 @@
                       },
                       "query_expansion": {
                         "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "additionalProperties": false
@@ -6152,6 +6222,22 @@
               },
               "additionalProperties": false
             },
+            "projection": {
+              "type": "object",
+              "properties": {
+                "max_entries_per_directory": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
             "compile_warn_tokens": {
               "type": "integer",
               "exclusiveMinimum": 0,
@@ -6396,6 +6482,22 @@
                       },
                       "query_expansion": {
                         "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "additionalProperties": false
@@ -8263,6 +8365,22 @@
               },
               "additionalProperties": false
             },
+            "projection": {
+              "type": "object",
+              "properties": {
+                "max_entries_per_directory": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "max_bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
             "compile_warn_tokens": {
               "type": "integer",
               "exclusiveMinimum": 0,
@@ -8507,6 +8625,22 @@
                       },
                       "query_expansion": {
                         "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "additionalProperties": false
@@ -10372,6 +10506,22 @@
                 },
                 "additionalProperties": false
               },
+              "projection": {
+                "type": "object",
+                "properties": {
+                  "max_entries_per_directory": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max_bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
               "compile_warn_tokens": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
@@ -10616,6 +10766,22 @@
                         },
                         "query_expansion": {
                           "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "projection": {
+                      "type": "object",
+                      "properties": {
+                        "max_entries_per_directory": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "max_bytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
                         }
                       },
                       "additionalProperties": false
@@ -12483,6 +12649,22 @@
                     },
                     "additionalProperties": false
                   },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "compile_warn_tokens": {
                     "type": "integer",
                     "exclusiveMinimum": 0,
@@ -12727,6 +12909,22 @@
                             },
                             "query_expansion": {
                               "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "projection": {
+                          "type": "object",
+                          "properties": {
+                            "max_entries_per_directory": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "max_bytes": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "additionalProperties": false
@@ -14594,6 +14792,22 @@
                     },
                     "additionalProperties": false
                   },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "compile_warn_tokens": {
                     "type": "integer",
                     "exclusiveMinimum": 0,
@@ -14838,6 +15052,22 @@
                             },
                             "query_expansion": {
                               "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "projection": {
+                          "type": "object",
+                          "properties": {
+                            "max_entries_per_directory": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "max_bytes": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "additionalProperties": false
@@ -16705,6 +16935,22 @@
                     },
                     "additionalProperties": false
                   },
+                  "projection": {
+                    "type": "object",
+                    "properties": {
+                      "max_entries_per_directory": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
                   "compile_warn_tokens": {
                     "type": "integer",
                     "exclusiveMinimum": 0,
@@ -16949,6 +17195,22 @@
                             },
                             "query_expansion": {
                               "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "projection": {
+                          "type": "object",
+                          "properties": {
+                            "max_entries_per_directory": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "max_bytes": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "additionalProperties": false

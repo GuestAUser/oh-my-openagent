@@ -367,6 +367,8 @@ export {
   buildCompletionMessage,
   completionMessageLines,
   createCompletionNotifier,
+  ASTRA_DAG_RUN_VERIFICATION_DIRECTIVE,
+  ASTRA_DAG_VERIFICATION_DIRECTIVE,
   DAG_VERIFICATION_DIRECTIVE,
   routeCompletion,
   shouldNotifyStatus,
