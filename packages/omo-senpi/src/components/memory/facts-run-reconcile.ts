@@ -81,7 +81,11 @@ async function backfillFactsReceipt(
   warn: ((message: string, fields: Readonly<Record<string, unknown>>) => void) | undefined,
 ): Promise<void> {
   const ledger = await readRunJson<{ readonly runId?: unknown; readonly batchId?: unknown }>(join(runDir, "ledger.json")).catch(() => undefined)
-  if (typeof ledger?.batchId !== "string") return
+  if (typeof ledger?.batchId !== "string") {
+    // Never guess a batch identity: a receipt keyed to the wrong batch would be a false record.
+    warn?.("facts receipt backfill skipped: ledger unreadable", { runDir })
+    return
+  }
   const final = await readRunJson<{ readonly runId?: unknown; readonly outcome?: unknown; readonly sha?: unknown }>(join(runDir, "final.json")).catch(() => undefined)
   if (final !== undefined) {
     const event = typeof final.outcome === "string" ? FACTS_OUTCOME_EVENTS[final.outcome] : undefined

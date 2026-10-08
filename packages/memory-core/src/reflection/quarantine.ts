@@ -7,7 +7,6 @@ export const QUARANTINE_FILENAME = "quarantined.json"
 export const RESERVATION_EVIDENCE_FILENAME = "reservation.quarantined.json"
 
 export type QuarantineReason =
-  | "invalid_generation_timestamps"
   | "ledger_unreadable"
   | "prelaunch_missing_after_deadline"
   | "terminal_claim_unrecoverable"

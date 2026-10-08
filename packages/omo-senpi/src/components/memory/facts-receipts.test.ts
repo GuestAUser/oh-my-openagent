@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -193,6 +193,75 @@ describe("facts receipt recovery", () => {
 
     // then
     expect((await read(paths)).map((receipt) => receipt.event)).toEqual(["no_facts"])
+  })
+
+  test("#given a finished facts run whose ledger is gone #when facts reconcile #then no receipt is guessed and the skip is logged once", async () => {
+    // given
+    const { paths, runDir } = await factsRun()
+    await writes(paths, { append: async () => { throw new Error("receipt write lost") } }).succeed(runDir, "facts-abc-1", "no_facts", { entries: [], targets: [] })
+    await rm(join(runDir, "ledger.json"))
+    const warnings: string[] = []
+
+    // when
+    await reconcileFactsRuns({
+      factsDir: paths.facts,
+      now: () => NOW,
+      finalize: async () => { throw new Error("a terminal run is never finalized again") },
+      fail: async () => { throw new Error("a terminal run is never failed again") },
+      abandon: async () => { throw new Error("a terminal run is never abandoned again") },
+      receiptsDir: paths.runtime,
+      warn: (message) => warnings.push(message),
+    })
+
+    // then
+    expect(await read(paths)).toEqual([])
+    expect(warnings).toEqual(["facts receipt backfill skipped: ledger unreadable"])
+  })
+
+  test("#given a batch whose ledger is unparseable text #when it succeeds #then the warning carries no part of the file", async () => {
+    // given
+    const { paths, runDir } = await factsRun()
+    await writeFile(join(runDir, "ledger.json"), "ghp_AAAABBBBCCCCDDDD1111")
+    const logged: string[] = []
+    const terminal = new FactsTerminalWrites({
+      failures: new FactsFailureStore({ identityPaths: paths, now: () => NOW }),
+      now: () => NOW,
+      markConsumed: async () => undefined,
+      receiptsDir: paths.runtime,
+      warn: (message, fields) => logged.push(JSON.stringify({ message, fields })),
+    })
+
+    // when
+    await terminal.succeed(runDir, "facts-abc-1", "no_facts", { entries: [], targets: [] })
+
+    // then
+    expect(logged).toHaveLength(1)
+    expect(logged[0]).not.toContain("CCCCDDDD1111")
+  })
+
+  test.each([
+    ["is gone", "facts receipt skipped: ledger unreadable"],
+    ["names another run", "facts receipt skipped: ledger does not name this run"],
+  ] as const)("#given a batch whose ledger %s #when it succeeds #then no receipt is guessed and the skip is logged", async (state, expected) => {
+    // given
+    const { paths, runDir } = await factsRun()
+    if (state === "is gone") await rm(join(runDir, "ledger.json"))
+    else await writeRunJsonAtomic(join(runDir, "ledger.json"), { version: 1, runId: "facts-other", batchId: "batch-0009" })
+    const warnings: string[] = []
+    const terminal = new FactsTerminalWrites({
+      failures: new FactsFailureStore({ identityPaths: paths, now: () => NOW }),
+      now: () => NOW,
+      markConsumed: async () => undefined,
+      receiptsDir: paths.runtime,
+      warn: (message) => warnings.push(message),
+    })
+
+    // when
+    await terminal.succeed(runDir, "facts-abc-1", "no_facts", { entries: [], targets: [] })
+
+    // then
+    expect(await read(paths)).toEqual([])
+    expect(warnings).toEqual([expected])
   })
 
   test("#given a launched receipt write that fails #when a facts run dir is reserved #then the failure is reported to warn and the run dir is still claimed", async () => {

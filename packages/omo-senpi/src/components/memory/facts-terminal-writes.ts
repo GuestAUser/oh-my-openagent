@@ -16,6 +16,7 @@
 
 import type {
   FactsFailureReason,
+  FactsFailuresFile,
   FactsFailureTarget,
   FactsQueueEntry,
 } from "@oh-my-opencode/memory-core"
@@ -135,8 +136,15 @@ export class FactsTerminalWrites {
   private async batchIdOf(runDir: string, runId: string): Promise<string | undefined> {
     try {
       const ledger = await readRunJson<{ readonly runId?: unknown; readonly batchId?: unknown }>(join(runDir, "ledger.json"))
-      return ledger.runId === runId && typeof ledger.batchId === "string" ? ledger.batchId : undefined
-    } catch {
+      if (ledger.runId === runId && typeof ledger.batchId === "string") return ledger.batchId
+      this.options.warn?.("facts receipt skipped: ledger does not name this run", { runDir })
+      return undefined
+    } catch (error) {
+      // The parse error message can quote the file, so only its kind is logged.
+      this.options.warn?.("facts receipt skipped: ledger unreadable", {
+        runDir,
+        errorKind: error instanceof Error ? error.name : typeof error,
+      })
       return undefined
     }
   }
@@ -188,10 +196,8 @@ export class FactsTerminalWrites {
   }
 }
 
-function parkedAny(file: unknown, targets: readonly FactsFailureTarget[]): boolean {
-  if (typeof file !== "object" || file === null || !Array.isArray((file as { entries?: unknown }).entries)) return false
-  const entries = (file as { entries: ReadonlyArray<{ conversationId?: unknown; end_message_id?: unknown; end_snapshot_line?: unknown; state?: unknown }> }).entries
-  return targets.some((target) => entries.some((entry) =>
+function parkedAny(file: FactsFailuresFile, targets: readonly FactsFailureTarget[]): boolean {
+  return targets.some((target) => file.entries.some((entry) =>
     entry.state === "parked"
     && entry.conversationId === target.conversationId
     && entry.end_message_id === target.endMessageId

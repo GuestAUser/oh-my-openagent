@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
+import { afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join } from "node:path"
 
-import { FactsFailureStore, memoryWriterLockPath } from "@oh-my-opencode/memory-core"
+import { FactsFailureStore, GitMemoryRepo, memoryWriterLockPath } from "@oh-my-opencode/memory-core"
 
 import { MemoryFakeExtensionAPI, memorySettings } from "../memory.test-support"
 import {
@@ -412,6 +412,19 @@ describe("/doctor", () => {
     expect(text).toMatch(/^\[ok\] projection: \d+ entries shown, 0 omitted, \d+ bytes \(limits 40\/dir, 24576 bytes\)$/m)
   })
 
+  test("#given commit times that cannot be read #when doctor runs #then the projection check warns that names fell back to name order", async () => {
+    // given
+    const { identity, pi, ctx } = await harness({ seeded: false })
+    await seededRepo(identity, [...SEEDS, { relativePath: "reference/a.md", content: "---\ndescription: A\n---\na\n" }])
+    const commitTimes = spyOn(GitMemoryRepo.prototype, "pathCommitTimes").mockRejectedValue(new Error("git log timed out"))
+
+    // when
+    const text = await invoke(pi, "doctor", "", ctx).finally(() => commitTimes.mockRestore())
+
+    // then
+    expect(text).toMatch(/^\[warn\] projection: 1 entries shown, 0 omitted, \d+ bytes \(limits 40\/dir, 24576 bytes\); commit times unreadable, names listed in name order$/m)
+  })
+
   test("#given more names than the per-directory limit #when doctor runs #then the omitted count is a warning", async () => {
     // given
     const { identity, pi, ctx } = await harness({
@@ -562,7 +575,7 @@ describe("doctor receipts and quarantined runs", () => {
     await mkdir(runDir, { recursive: true })
     const record = {
       version: 1, runId: "run-quarantined", kind: "reflection", trigger: "step-count", generation: at(3 * HOUR_MS),
-      reason: "invalid_generation_timestamps", quarantinedAt: at(2 * HOUR_MS), evidence: ["final.json", "ledger.json"],
+      reason: "ledger_unreadable", quarantinedAt: at(2 * HOUR_MS), evidence: ["final.json", "ledger.json"],
     }
     await writeFile(join(runDir, "quarantined.json"), JSON.stringify(record))
 
@@ -571,11 +584,30 @@ describe("doctor receipts and quarantined runs", () => {
     const report = JSON.parse(await invoke(pi, "doctor", "--json", ctx))
 
     // then
-    expect(text).toContain(`[warn] quarantined-runs: 1 run needs manual disposal: ${runDir} (invalid_generation_timestamps)`)
+    expect(text).toContain(`[warn] quarantined-runs: 1 run needs manual disposal: ${runDir} (ledger_unreadable)`)
     expect(report.quarantinedRuns).toEqual([{
-      runId: "run-quarantined", reason: "invalid_generation_timestamps", at: record.quarantinedAt, dir: runDir, evidence: record.evidence,
+      runId: "run-quarantined", reason: "ledger_unreadable", at: record.quarantinedAt, dir: runDir, evidence: record.evidence,
     }])
     expect(report.level).toBe("warn")
+  })
+
+  test("#given a quarantine record whose evidence name holds a credential next to a quote #when doctor runs with --json #then the report still parses and the credential is masked", async () => {
+    // given
+    const { identity, pi, ctx } = await harness({ deps: { now: () => NOW_MS } })
+    const runDir = join(identity.identityPaths.reflection, "runs", "run-quoted")
+    await mkdir(runDir, { recursive: true })
+    await writeFile(join(runDir, "quarantined.json"), JSON.stringify({
+      version: 1, runId: "run-quoted", kind: "reflection", trigger: "step-count", generation: at(3 * HOUR_MS),
+      reason: "ledger_unreadable", quarantinedAt: at(2 * HOUR_MS), evidence: ['notes/token=abc\\x"def.md', "ledger.json"],
+    }))
+
+    // when
+    const text = await invoke(pi, "doctor", "--json", ctx)
+
+    // then
+    const report = JSON.parse(text)
+    expect(report.quarantinedRuns[0].evidence).toEqual(['notes/***"def.md', "ledger.json"])
+    expect(text).not.toContain("token=abc")
   })
 
   test("#given a receipts file ending in a partial line #when doctor runs #then the receipts check warns and counts the skipped line", async () => {

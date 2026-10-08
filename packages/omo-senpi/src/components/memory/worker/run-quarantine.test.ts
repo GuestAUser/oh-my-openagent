@@ -125,6 +125,7 @@ describe("quarantine of runs reconciliation cannot recover", () => {
       runId: "run-orphan", kind: "reflection", trigger: "step-count",
       generation: activeBefore.reservedAt, reason: "ledger_unreadable",
     })
+    expect(JSON.parse(await readFile(join(item.runDir, "reservation.quarantined.json"), "utf8"))).toEqual(activeBefore)
     expect(await readFile(join(item.runDir, "ledger.json"), "utf8")).toBe("{ not json")
     expect((await item.store.readState()).active).toBeUndefined()
   }, 30_000)

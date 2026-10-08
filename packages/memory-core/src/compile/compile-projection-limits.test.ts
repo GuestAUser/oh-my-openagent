@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { createNodeGitExec } from "../git"
 import { MemoryBlockCache } from "./cache"
-import { compileMemoryBlock } from "./compile"
+import { compileMemoryBlock, externalProjectionStatsAt } from "./compile"
 import { memory, repoWith } from "./compile.test-support"
 
 async function commitAt(dir: string, path: string, content: string, iso: string): Promise<void> {
@@ -63,6 +63,23 @@ describe("compileMemoryBlock projection limits", () => {
     // then
     expect(block).toContain("Person")
     expect(projectionLine(block, "reference/")).toBe("reference/: a.md (+1 more; read $MEMORY_DIR/reference/ to list)")
+  })
+
+  it("#given commit times that cannot be read #when the projection is measured #then the stats say the names fell back to name order", async () => {
+    // given
+    const { dir, repo } = await repoWith([{ relativePath: "system/human.md", content: memory("Human", "Person") }])
+    await commitAt(dir, "reference/a.md", memory("A", "x"), "2026-01-01T00:00:01Z")
+    const head = await repo.head()
+    if (head === null) throw new Error("expected a head")
+    const readable = await externalProjectionStatsAt(repo, head, { maxEntriesPerDirectory: 1, maxBytes: 0 })
+    repo.pathCommitTimes = async () => { throw new Error("git log timed out") }
+
+    // when
+    const unreadable = await externalProjectionStatsAt(repo, head, { maxEntriesPerDirectory: 1, maxBytes: 0 })
+
+    // then
+    expect(readable.recencyUnavailable).toBe(false)
+    expect(unreadable.recencyUnavailable).toBe(true)
   })
 
   it("#given two different limits at one revision #when cached #then each gets its own entry and its own bytes", async () => {

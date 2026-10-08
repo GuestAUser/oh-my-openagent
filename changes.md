@@ -1,3 +1,63 @@
+## 2026-10-08 - Install guide lists the community AUR package (#9584)
+
+`docs/guide/install.md` gains an "Arch Linux: community AUR package" section for `omo-bin`, a package maintained by @sTiKyt outside the OmO team. The section says what it installs (our official release binary for its version, checked against that release's `SHA256SUMS`, as `/usr/bin/omo`), and to update it with the AUR helper, because `omo update` and the install command don't recognize a pacman install yet (#9585). It also says the package can trail the `latest` channel.
+
+## 2026-10-08 - The process-model catalog probe reads the whole catalog under load (#9068)
+
+`senpi --list-models` prints its catalog and calls `process.exit(0)` right away. When the host was too loaded to drain the probe's stdout pipe, every row past the pipe buffer was dropped while the child still exited 0, and because the catalog is sorted by provider the tail (`xai`) went first. Admission then rejected `xai/grok-4.7` as `model_not_in_child_profile`, and the confirming re-probe ran under the same load, so it confirmed the false absence. `probeModelCatalog` (`packages/senpi-task/src/runners/rpc/model-catalog-probe.ts`) now gives the child a temp file as stdout instead of a pipe, reads the last 2 MiB of it once the probe settles (the child closed, or the timeout path terminated it) and removes it; stderr stays piped. A read or cleanup failure is reported in the probe's stderr instead of thrown, so admission always gets a result. A file write never waits on the reader, so the catalog is whole however slowly the host is scheduled.
+
+## 2026-10-08 - OpenCode never migrates `.sisyphus` into the home `~/.omo`; `~/.omo/desktop*` is reserved for the OmO desktop app (#9727)
+
+The OmO desktop app is moving its data home (a live SQLite database and worktrees) to `~/.omo/desktop`, with a transient `~/.omo/desktop.init-*` while it prepares (code-yeongyu/omo-desktop-app#1829). The OpenCode plugin's legacy workspace migration (`packages/omo-opencode/src/shared/legacy-workspace-migration.ts`, run on every plugin load) copied missing entries of `<cwd>/.sisyphus` into `<cwd>/.omo`. When OpenCode started in the home folder, that target was the OmO home itself, so a stray `~/.sisyphus/desktop/` could drop files into the desktop app's database folder. The migration now:
+- **Refuses the home target:** it does nothing when the directory is the user's home, in any of its spellings: `HOME`/`USERPROFILE` (the config loader's user layer), `os.homedir()`, and the account home. `.sisyphus` was always a per-project workspace, and the only home-level legacy entry, `~/.sisyphus/rules`, is still read in place by the rules engine.
+- **Never overwrites:** it decides whether a target exists with `lstat` and copies with `COPYFILE_EXCL`, so an existing file is never overwritten and a dangling symlink at the target is never written through.
+
+The root `AGENTS.md` now reserves `desktop/` and `desktop.init-*` in `~/.omo` for the desktop app. Other operations under `~/.omo` stay scoped as before:
+- the isolation sweep removes only `t<hex10>` entries under `~/.omo/wt`;
+- team cleanup removes only `~/.omo/runtime/<id>`;
+- config migration touches only the omo config files.
+
+The engine's copy-forward into a flat-layout brand dir skips the reserved names in senpi (code-yeongyu/senpi#2898).
+
+## 2026-10-08 - An explicit task model pin is honoured or the spawn fails loudly (#9722)
+
+A task spawn carrying `model: "provider/model:level"` silently ran on the global settings default whenever the default differed from the pin: the planner kept the suffix as part of the model id, the in-process session context dropped the unresolvable id without an error, and senpi substituted the default. The pin is now parsed once with senpi's own model resolver into a canonical `provider/model_id` plus thinking level, resolved against the live registry at plan time, and a pin that does not resolve fails with a typed `model_unavailable` naming the pin and the default route the child would have used. The in-process session context asserts the spec's model instead of filtering it, the RPC process and host runners admit a valid `:level` pin and send the base id plus the level, and after start the child's effective model is checked against the plan (a mismatch fails typed, the session is torn down) and read from the child itself into the record's new `effective_model` - so `task_output` and the `started` result name the model that actually ran.
+
+## 2026-10-07 - Suspended children retry after their parent session resumes (#9498)
+
+A resumed session now retries its own children when revival temporarily cannot
+resolve a model or session, acquire a lock, roll back a claim, obtain capacity,
+or recover ownership. Previously only unreachable or draining daemon sessions
+were retried; other children waited indefinitely for another session start.
+The existing bounded backoffs and ownership-fenced admission remain in use.
+Repeated unowned model/session/rollback/lock failures end as `lost`, with the
+deferral and retry count visible in `task_output` and the normal parent terminal
+notification. Capacity and live-owner deferrals stay suspended until the other
+side moves; daemon-hosted sessions are never marked lost by this fallback.
+
+## 2026-10-07 - Memory masking covers a token glued by an invisible character that also holds one inside (#9717)
+
+When a format character outside the Basic Multilingual Plane glued an ordinary word to a token, and the token itself held a zero-width or control character, memory masking hid only the token's first part (and an AWS access key id in that shape was not detected at all). The scanner now remembers where it dropped an invisible character and retries the token patterns around each such point (also for a token that ends in a hyphen or is glued to a word after it), so the whole token is detected and masked; the extra pass stays linear on adversarial input. Control characters inside a credential key or vendor prefix are now covered by tests, and a facts warning no longer copies a parse error message that can quote the file.
+
+## 2026-10-07 - The per-session workflow cap counts only active runs (#9712)
+
+`task.dag.max_runs_per_session` (default 16) is a cap on runs that are still active, as the `mass-ulw` guidance describes it. The store used to count every run record of the session, including completed, failed and cancelled runs, until the 7-day retention pruned them, so a long session hit `DAG session run limit reached: 16` with nothing running. The capacity check now skips runs whose status is terminal (`TERMINAL_DAG_RUN_STATUSES` in `senpi-task`'s `dag/types.ts`, shared with the wait surface, retention and retry). Because a finished run no longer holds a slot, reviving one (`retry`, or re-entry after an amend) now passes the same check under the session capacity lock before anything is journaled, so a session cannot exceed the cap through retries and a refused retry leaves every node as it was. The error states how many runs are active and the way out: wait for one to finish, cancel one, or raise `task.dag.max_runs_per_session`. Finished runs stay readable until retention, as before. An amend that the cap refuses at re-entry keeps the saved amendment: amend again with the same definition once a slot frees to run it.
+## 2026-10-07 - The parity gate's ast-grep probe waits for the MCP tools to register (#9710)
+
+Since senpi 2026.10.10-6 a first message no longer waits for MCP servers to connect (senpi#2843), so `native-binary-parity`'s tool-search probe counted whatever the bundled ast-grep MCP server had registered by then and failed on timing alone (3 vs 4 tools on macOS, which also stopped the 5.1.23 publish once). `script/qa/omo-native-parity-compare.mjs` now builds the probe as an eval cell that polls `tool_search` until all three ast-grep tools (`mcp__ast_grep_search`, `_rewrite`, `_scan`) are listed, bounded at 45 s, with `on_timeout: "error"` on the step so eval never detaches the cell (an RPC session otherwise detaches a cell after 30 s), and prints one settled line. The search is scoped to `source: "mcp"` so other catalog tools can't crowd the three out of the result cap. A side whose tools never register prints an explicit timeout line, and `compareRuns` reports it as a difference even when both sides agree, so a missing MCP runtime still fails the gate. senpi#2843's behavior is untouched.
+
+## 2026-10-07 - A child that fails to start says why (#9703)
+
+A task child whose first prompt was rejected reported only "Child prompt failed to start." in the task record, the event log and the tool result, so a host timeout, a host refusal, a lost connection and a child that crashed before taking its prompt all looked the same. The start failure now names the cause in one sanitized line: the request that got no answer in time (`request_timeout`), the host's refusal with its error code when the code is a plain identifier (`host_refused`), a lost connection (`transport_lost`), or the child's exit (kind plus code or signal). The event log also carries `cause_class`, `timed_out_command` and `cause_code`. Raw error text, which can carry a stderr tail, still never reaches a record, an event or the tool result, and an unrecognized cause keeps the previous message.
+
+## 2026-10-07 - Memory secret scanning handles format characters outside the BMP; doctor and receipts say when they fall back (#9653, #9689 follow-ups)
+
+The memory secret scanner strips Unicode format characters before matching, but it walked text one UTF-16 code unit at a time, so a format character outside the Basic Multilingual Plane survived the strip and could split a secret-like value past the commit gate and the injection-time masking. The scanner now walks by code point and maps matches back to the exact original span, and it also scans a copy where format characters become a separator, so a format character gluing a word character to a secret no longer hides the secret's word boundary (this also closes the older zero-width-space variant of that gap); a match from that second scan is kept unless the first scan already covers all of it, so a token joined to a following credential by such a character masks both (the split-key pass follows the same rule, so a glued credential whose value holds such a character is masked whole), and control characters gluing a word to a secret are handled the same way. `/doctor` reports when commit times cannot be read and the memory file list falls back to name order, facts receipts that cannot be written because a run's ledger is missing now log a warning instead of skipping silently, and `invalid_generation_timestamps` is removed from the quarantine reasons because nothing writes it. New tests cover the out-of-BMP split, a `/doctor --json` value with a quote next to a credential, the preserved reservation evidence of a quarantine, and a facts run whose ledger is gone.
+
+## 2026-10-08 - Adopt senpi 2026.10.10-8
+
+Every `@code-yeongyu/senpi` pin moves from 2026.10.10-6 to 2026.10.10-8 (-7 was cancelled before publishing): the root devDependency, `omo-native` and its provider map comment, the `omo-senpi` and `senpi-task` peer and dev pins (with their `senpi-tui` and `senpi-ai` aliases), the pin tests and the engine named in `senpi-task`'s coverage test. The engine carries the MCP SDK 1.32.1 issuer binding for saved sign-ins (senpi#2940), the Anthropic subscription auth-block recovery (senpi#2926), required compaction on small windows (senpi#2925), the config-reload loop fix (senpi#2878), print-then-exit output on slow pipes (senpi#2937), `ask_user_question` answers outside the tool result (senpi#2920) and the official Kimi K3 cache-write price. The generated plugin bundle is regenerated for it on Linux.
+
 ## 2026-10-07 - Adopt senpi 2026.10.10-6
 
 Every `@code-yeongyu/senpi` pin moves from 2026.10.10-5 to 2026.10.10-6: the root devDependency, `omo-native` and its provider map comment, the `omo-senpi` and `senpi-task` peer and dev pins (with their `senpi-tui` and `senpi-ai` aliases), the pin tests and the engine named in `senpi-task`'s coverage test. The engine carries the child-spawn fix for "Provider scope is closed" on a busy shared host (senpi#2871), senpi-owned compaction on the subscription lane (senpi#2749), the Anthropic tool-change fix, the cache-first MCP admission and the restored-binding check. The generated plugin bundles are regenerated for it on Linux.

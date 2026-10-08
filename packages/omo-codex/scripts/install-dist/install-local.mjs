@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// omo-codex-install:de90eaeccb99b4b7d08617faf4592be4104dff9b91daabb02e0887dceb917285:b9805fec26e08f6ea1b9f908a5008e6afea2f6bfd390dfc4af6661cc8c38050f
+// omo-codex-install:caa7879e50092d3c1d1b6a5a5e9e56f0d6a2305f9019894226b7d9dfcdb0897e:19577fd62fd046c9a4b3d91dd2364491253449345a67147d3200f085c0952d49
 var __esm = (fn, res, err) => () => {
   if (fn)
     try {
@@ -9984,7 +9984,7 @@ var package_default;
 var init_package = __esm(() => {
   package_default = {
     name: "@oh-my-opencode/omo-codex",
-    version: "5.1.23",
+    version: "5.1.26",
     type: "module",
     private: true,
     description: "Codex harness adapter for oh-my-openagent. Vendored Codex plugin namespace (omo) + TypeScript installer + telemetry.",
@@ -19663,6 +19663,56 @@ var OmoModelProfileLayerInputSchema = OmoModelProfileInputSchema.partial();
 var OmoModelProfileLayerSchema = preprocess((value) => isRecord6(value) ? normalizeLegacyModelFields(value) : value, OmoModelProfileLayerInputSchema);
 var OmoModelProfilesLayerSchema = record(string2(), OmoModelProfileLayerSchema);
 
+// packages/omo-config-core/src/schema/side-panel.ts
+var OmoSidePanelWidthSchema = union([number2().int().min(24).max(160), string2().regex(/^(?:1\d|[2-4]\d|50)%$/)]);
+var OmoSidePanelSectionsShape = {
+  session: boolean2(),
+  goal: boolean2(),
+  context: boolean2(),
+  usage: boolean2(),
+  agents: boolean2(),
+  tools: boolean2(),
+  files: boolean2(),
+  memory: boolean2()
+};
+var OmoSidePanelSectionsLayerSchema = object(OmoSidePanelSectionsShape).partial().strict();
+var OmoSidePanelSectionsSchema = OmoSidePanelSectionsLayerSchema.extend({
+  session: boolean2().default(true),
+  goal: boolean2().default(true),
+  context: boolean2().default(true),
+  usage: boolean2().default(false),
+  agents: boolean2().default(true),
+  tools: boolean2().default(true),
+  files: boolean2().default(true),
+  memory: boolean2().default(true)
+}).strict();
+var OmoSidePanelSettingsShape = {
+  enabled: boolean2(),
+  width: OmoSidePanelWidthSchema,
+  min_columns: number2().int().min(60).max(400),
+  clickable: boolean2(),
+  usage_poll_seconds: number2().int().min(60).max(3600),
+  sections: OmoSidePanelSectionsLayerSchema
+};
+var OmoSidePanelSettingsLayerSchema = object(OmoSidePanelSettingsShape).partial().strict();
+var OmoSidePanelSettingsSchema = OmoSidePanelSettingsLayerSchema.extend({
+  enabled: boolean2().default(false),
+  width: OmoSidePanelWidthSchema.default("26%"),
+  min_columns: number2().int().min(60).max(400).default(120),
+  clickable: boolean2().default(true),
+  usage_poll_seconds: number2().int().min(60).max(3600).default(150),
+  sections: OmoSidePanelSectionsSchema.default({
+    session: true,
+    goal: true,
+    context: true,
+    usage: false,
+    agents: true,
+    tools: true,
+    files: true,
+    memory: true
+  })
+}).strict();
+
 // packages/omo-config-core/src/schema/task.ts
 import { availableParallelism } from "node:os";
 var DEFAULT_RESIDENCY_MAX_CHILDREN = "unlimited";
@@ -19887,6 +19937,7 @@ var OmoTypedHarnessConfigSchema = object({
   model_profile: string2().optional(),
   memory: OmoMemorySettingsLayerSchema.optional(),
   telemetry: OmoTelemetrySettingsLayerSchema.optional(),
+  side_panel: OmoSidePanelSettingsLayerSchema.optional(),
   computer: OmoComputerSettingsLayerSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional()
 }).strict();
@@ -19902,6 +19953,7 @@ var OmoConfigProfileSchema = object({
   model_profile: string2().optional(),
   memory: OmoMemorySettingsLayerSchema.optional(),
   telemetry: OmoTelemetrySettingsLayerSchema.optional(),
+  side_panel: OmoSidePanelSettingsLayerSchema.optional(),
   computer: OmoComputerSettingsLayerSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional(),
   "[opencode]": OmoOpenCodeHarnessConfigSchema.optional(),
@@ -19923,6 +19975,7 @@ var OmoConfigSchema = object({
   model_profile: string2().optional(),
   memory: OmoMemorySettingsSchema.optional(),
   telemetry: OmoTelemetrySettingsSchema.optional(),
+  side_panel: OmoSidePanelSettingsSchema.optional(),
   computer: OmoComputerSettingsSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional(),
   "[opencode]": OmoOpenCodeHarnessConfigSchema.optional(),
@@ -19947,6 +20000,7 @@ var OmoConfigLayerSchema = object({
   model_profile: string2().optional(),
   memory: OmoMemorySettingsLayerSchema.optional(),
   telemetry: OmoTelemetrySettingsLayerSchema.optional(),
+  side_panel: OmoSidePanelSettingsLayerSchema.optional(),
   computer: OmoComputerSettingsLayerSchema.optional(),
   disabled_skills: OmoDisabledSkillsSchema.optional(),
   "[opencode]": OmoOpenCodeHarnessConfigSchema.optional(),

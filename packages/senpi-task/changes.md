@@ -1,3 +1,75 @@
+## 2026-10-05 - A process-runner child gets its own fallback chain (#9582)
+
+`runners/rpc-process.ts`: a task child started as its own `senpi --mode rpc` process (`task.process_runner: "child-process"`, and every child on win32) now receives the fallback chain resolved for its category. When the engine advertises `retry_fallback_command`, the runner sends `set_retry_fallback` with the same profile a daemon-hosted child gets on `open_session` (`runners/retry-fallback-profile.ts`, now shared with `rpc-host/open-session.ts`). It sends it before the resumed session is switched in and before the first prompt, because senpi refuses it once the session has a turn. The engine holds it in memory only, so the user's settings file is never written, and a usage limit after a tool call now switches models inside the running session instead of ending the child.
+
+The chain never holds a start up. If the engine refuses `set_retry_fallback`, or does not answer it (or `get_protocol_info`) within 10 s, the runner names the task in a warning and sends the first prompt anyway; the child then falls back only when a turn fails before any tool call, the same as on an older engine. A child that died meanwhile still fails on that prompt with its exit recorded, and its warning says the child exited instead of blaming the engine.
+
+`runners/rpc/handle.ts`: a process child's events now go through the same early-event buffer the host runner got in #9518 (`rpc-host/handle-listeners.ts`). The manager subscribes only after `start` returns, and a fast first turn (a tool call and an in-session fallback hop included) used to finish in that window, so `tool_execution` and `retry_fallback_applied` never reached the task record and it kept naming the spent model. `rpc-process-early-events.test.ts` (both cases fail on `dev`): an observer attached after the first turn still receives it in order, and two observers attached together each get it once, with later events arriving live. Subscribers still run after the handle has recorded each event, as on `dev` and on the host handle, so a live observer reads current state (`lastAssistantText()` at `message_end`); the third case pins that order.
+
+An engine without the capability gets nothing new and the user is told once. A child without a chain sends nothing, so its command stream is unchanged.
+
+`rpc-process-fallback-chain.test.ts` covers the chain sent before the prompt, the chain sent before `switch_session` on a resume, a chainless child unchanged, and an older engine warned once. Three of the four fail on `dev`. The fake RPC child (`rpc/__fixtures__/fake-child.mjs`) answers `get_protocol_info` with `FAKE_CAPABILITIES` and can log every command it receives (`FAKE_COMMAND_LOG`).
+
+## 2026-10-08 - Explicit task model pins are honoured or fail typed, and the record names the child's model (#9722)
+
+A `provider/model:level` pin was planned verbatim, the in-process registry
+context dropped the unresolvable id silently, and the child rode the settings
+default while the record kept claiming the pin. `senpi/explicit-pin.ts` parses
+the pin once with senpi's `resolveCliModel` and `manager/parent-registry-context.ts`
+`provide()` now asserts the spec model instead of filtering it, matching resume;
+`runners/rpc/model-admission.ts` and `rpc-host/open-session.ts` strip the suffix
+with the same grammar, so a valid pin admits and sends the base id plus the
+level. After start, the in-process runner and the host opener compare the
+child's effective model with the pin and fail typed on a substitution, the
+in-process mismatch disposes its session, and an unreadable host state fails
+closed. A pinned child starts with `initialModelProvenance: "cli"`, and a
+`:<service-tier>` pin is a typed `invalid_target` instead of a silently dropped
+tier. Legacy records whose ids still carry a `:level` suffix resolve by their
+canonical base on respawn.
+
+`manager/manager.ts` start-time and runtime fallback specs refresh `resolvedModel`
+to the attempt's own rung, so the post-start check no longer rejects the
+fallback child it asked for. The record's new `effective_model` is stamped from
+the child itself (`effectiveModel` on the managed handle: the in-process
+session's model, the host's `get_state` model), kept current from the child's
+assistant-message observations (`manager/observed-model.ts`), and surfaced on
+the `started` result and in `task_output`.
+
+Tests: `runners/explicit-pin.integration.test.ts` drives the real manager plus
+in-process child against a fake provider whose isolated settings default is a
+different model (honoured pin with record truth, typed refusal naming the pin
+and the default route, late same-provider registration, tier rejection).
+Mutation-verified: removing either post-start check or either suffix split
+fails its test.
+
+## 2026-10-07 - Resumed children retry deferred revival and settle unowned failures (#9498)
+
+`lifecycle/host-session-revive.ts` extends the existing per-child single-flight
+retry to the resumed session's own `capacity`, `lock_contended`,
+`model_unavailable`, `session_unavailable`, `rollback_failed` and
+`foreign_live_owner` deferrals. `lifecycle/deferred-revival.ts` uses the existing
+`hostRetry` backoffs and scoped admission lease, excluding other children from
+that attempt's admission while still counting them toward capacity. Every retry
+re-reads terminality, kill intent, handles and ownership; a new claim or epoch
+stops a stale retry.
+
+`lifecycle/reconcile.ts` carries the initial live-owner exclusion into scoped
+admission's fresh store selector too: filtering only the observed candidate
+array did not protect a suspended record still owned by a live foreign process.
+
+After the bounded retries, unowned model/session/rollback/lock failures become
+`lost` through `markRecordLostForReconciliation` and the lifecycle destruction
+port. The error and events name the last deferral and retry count. The adapter's
+completion bridge observes the `lost` mutation and delivers the parent's notification.
+Capacity and live owners remain suspended because the other side must release
+them; daemon-hosted children are never lost. Configuration-only deferrals such
+as `reattach_disabled` are not scheduled.
+
+`lifecycle/deferred-revival.test.ts` exercises revival on the first retry,
+exhaustion with terminal `task_output` breadcrumbs, capacity with the
+`task_send` refusal policy, and daemon preservation, using fixture clocks and
+pre-subscribed event promises rather than sleeps.
+
 ## 2026-10-07 - An eval handle's send and cancel replies come only from the post-engine check, and a rolled-back epoch is never issued again (#9562)
 
 A: `eval-handles/steer-refs.ts` now holds send and cancel, and no task record or `taskSnapshot` is in scope there. Every reply comes from `eval-handles/run-after-engine.ts`. `fenceBeforeEngine` fences the ref and returns a `PriorRun` whose record is private. Its `reread` re-reads the task after the engine returned and yields a `RunAfterEngine`, which builds the reply (`delivered`, `phase`, `stale`). `steer-refs.ts` imports no `taskSnapshot`, so every send and cancel reply there goes through the re-read run (review: this is a convention of the module, not a type guarantee, since `deps.tasks.get()` still returns a record). `control.ts` keeps only result and output. `afterEngine` is gone from the exports, `SEND_HOST_STATUS` moved to `run-after-engine.ts` and `WATCH_HOST_STATUS` to `watch.ts`.

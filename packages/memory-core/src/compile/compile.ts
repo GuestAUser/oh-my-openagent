@@ -72,8 +72,9 @@ async function projectionInput(
   try {
     return { times: await repo.pathCommitTimes(revision), limits }
   } catch {
-    // Commit times only order names; without them the same limits apply in name order.
-    return { times: new Map(), limits }
+    // Commit times only order names; without them the same limits apply in name order, and the
+    // fallback is reported (`/doctor` projection) instead of silently changing the order.
+    return { times: new Map(), limits, recencyUnavailable: true }
   }
 }
 

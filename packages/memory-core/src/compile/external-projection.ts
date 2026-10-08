@@ -14,6 +14,8 @@ export interface ExternalProjectionInput {
   /** Last commit time per path (epoch seconds); names without one sort after every timed name. */
   readonly times: ReadonlyMap<string, number>
   readonly limits: ExternalProjectionLimits
+  /** Commit times could not be read, so names are in name order instead of newest first. */
+  readonly recencyUnavailable?: boolean
 }
 
 export interface ExternalProjectionStats {
@@ -23,6 +25,7 @@ export interface ExternalProjectionStats {
   readonly maxBytes: number
   /** No listing fits the budget, so the smallest one was emitted. */
   readonly overflow: boolean
+  readonly recencyUnavailable: boolean
 }
 
 export const DEFAULT_EXTERNAL_PROJECTION_LIMITS: ExternalProjectionLimits = {
@@ -56,7 +59,14 @@ export function renderExternalProjectionStats(
   const total = fitted.directories.reduce((sum, directory) => sum + directory.names.length, 0)
   const shown = fitted.allowances.reduce((sum, allowance) => sum + allowance, 0)
   const { maxBytes } = input.limits
-  return { shown, omitted: total - shown, bytes, maxBytes, overflow: maxBytes > 0 && bytes > maxBytes }
+  return {
+    shown,
+    omitted: total - shown,
+    bytes,
+    maxBytes,
+    overflow: maxBytes > 0 && bytes > maxBytes,
+    recencyUnavailable: input.recencyUnavailable === true,
+  }
 }
 
 function layout(paths: readonly string[], input: ExternalProjectionInput | undefined): Layout {

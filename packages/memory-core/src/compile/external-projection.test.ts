@@ -168,7 +168,7 @@ describe("renderExternalProjection limits", () => {
       "b/: (+1 more; read $MEMORY_DIR/b/ to list)",
       "</external_projection>",
     ].join("\n"))
-    expect(stats).toEqual({ shown: 0, omitted: 10, bytes: bytes(text), maxBytes: 1, overflow: true })
+    expect(stats).toEqual({ shown: 0, omitted: 10, bytes: bytes(text), maxBytes: 1, overflow: true, recencyUnavailable: false })
   })
 
   it("#given short names whose full listing is smaller than the floor #when the budget is below both #then the full listing is returned and the overflow is reported", () => {
@@ -182,7 +182,7 @@ describe("renderExternalProjection limits", () => {
 
     // then
     expect(text).toBe(renderExternalProjection(paths))
-    expect(stats).toEqual({ shown: 4, omitted: 0, bytes: bytes(text), maxBytes: 1, overflow: true })
+    expect(stats).toEqual({ shown: 4, omitted: 0, bytes: bytes(text), maxBytes: 1, overflow: true, recencyUnavailable: false })
   })
 
   it("#given equal commit times #when ordered #then names break the tie, and names without a time come last", () => {
@@ -207,7 +207,7 @@ describe("renderExternalProjection limits", () => {
 
     // then
     expect(stats).toEqual({
-      shown: 2, omitted: 0, bytes: bytes(renderExternalProjection(paths, input)), maxBytes: 24_576, overflow: false,
+      shown: 2, omitted: 0, bytes: bytes(renderExternalProjection(paths, input)), maxBytes: 24_576, overflow: false, recencyUnavailable: false,
     })
   })
 })

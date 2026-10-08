@@ -1,4 +1,5 @@
 import { resolveContext } from "./context"
+import { disposeScopedRetries, resumeScopedRetries, stopScopedRetries } from "./deferred-revival"
 import { destroyResidentTask } from "./destroy"
 import { parkHostSessionOnDaemonLoss, retryDeferredHostSessions, type HostSessionParkOptions } from "./host-session-revive"
 import { registerLifecycleDetachedRevival, registerLifecycleDetachedRevivalRollback, type DestroyCause, type LifecycleDeps } from "./port"
@@ -28,17 +29,22 @@ export function createTaskLifecycle(deps: LifecycleDeps): TaskLifecycle {
     // whole runtime binding map goes too - no strong reference to a disposed kernel survives.
     dispose: () => {
       stopIdleReclaimer()
+      disposeScopedRetries(context)
       context.kernelToolBindings?.releaseAll()
     },
     admitResident: (parentSessionId: string) => admitResident(context, parentSessionId),
     reconcileOnSessionStart: async (parentSessionId?: string) => {
+      if (parentSessionId !== undefined) resumeScopedRetries(context, parentSessionId)
       const result = await reconcileOnSessionStart(context, parentSessionId)
-      retryDeferredHostSessions(context, result.outcomes)
+      retryDeferredHostSessions(context, result.outcomes, parentSessionId)
       return result
     },
     parkHostSessionOnDaemonLoss: (taskId: string, options?: HostSessionParkOptions) =>
       parkHostSessionOnDaemonLoss(context, taskId, options),
     cleanupExpiredRecords: cleanup,
-    suspendOnSessionShutdown: (input: SuspendInput) => suspendOnSessionShutdown(context, input),
+    suspendOnSessionShutdown: (input: SuspendInput) => {
+      stopScopedRetries(context, input.parentSessionId)
+      return suspendOnSessionShutdown(context, input)
+    },
   }
 }
